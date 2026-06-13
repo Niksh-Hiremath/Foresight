@@ -24,6 +24,7 @@ class IntakeContext(BaseModel):
     stated_beliefs: str = ""
     financial_posture: str = ""
     gaps: str = ""
+    follow_up_questions: list[dict[str, Any]] = []
     follow_up_answers: dict[str, Any] = {}
     created_at: datetime = Field(default_factory=_now)
 

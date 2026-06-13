@@ -22,6 +22,13 @@ async def get_intake_context(decision_id: str) -> IntakeContext | None:
     return IntakeContext(**raw) if raw else None
 
 
+async def update_intake_context(doc: IntakeContext) -> IntakeContext:
+    await get_db()["intake_context"].replace_one(
+        {"decision_id": doc.decision_id}, doc.model_dump()
+    )
+    return doc
+
+
 async def create_agent_finding(doc: AgentFinding) -> AgentFinding:
     await get_db()["agent_findings"].insert_one(doc.model_dump())
     return doc

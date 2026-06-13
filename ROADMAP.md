@@ -109,13 +109,13 @@ the keyword fallback (and via Atlas Vector if wired).
 
 ## Phase 2 — Intake pipeline (the differentiator)
 
-### T2.1 — Upload + document parsing
+### T2.1 — Upload + document parsing ✅
 **Prompt:** "Add `POST /intake/upload` accepting PDF/DOCX. Parse to plain text (PyMuPDF/pdfplumber
 / python-docx). Store raw text in `decisions` AND chunk+tag it into the RAG `decision` layer (T1.4).
 Return a `decision_id`."
 **STOP / verify:** Tester uploads a sample pitch PDF; text is extracted and stored; id returned.
 
-### T2.2 — LLM intake → DecisionContext + follow-ups
+### T2.2 — LLM intake → DecisionContext + follow-ups ✅
 **Prompt:** "Add a service that sends the parsed text to the LLM (OpenAI SDK, env-configured) and
 returns a structured `DecisionContext` (core decision, market, stated beliefs, financial posture, gaps) PLUS 3–5
 adaptive follow-up questions (MCQ/text) targeting the gaps. Expose `POST /intake/analyze`
@@ -123,7 +123,7 @@ adaptive follow-up questions (MCQ/text) targeting the gaps. Expose `POST /intake
 **STOP / verify:** Tester runs analyze on the sample; gets sensible questions; submitting answers
 persists a complete DecisionContext.
 
-### T2.3 — Upload + adaptive Q&A UI
+### T2.3 — Upload + adaptive Q&A UI ✅
 **Prompt:** "Build the Upload page: drag-drop file → call analyze → render the follow-up
 questions as a form (MCQ + text) → submit answers → show a 'context ready' summary."
 **STOP / verify:** Tester completes the full intake flow in the browser, no console errors.
@@ -134,7 +134,7 @@ questions as a form (MCQ + text) → submit answers → show a 'context ready' s
 
 ## Phase 3 — Adversarial agents (core engine)
 
-### T3.1 — Agent framework + first agent (CFO)
+### T3.1 — Agent framework + first agent (CFO) ✅
 **Prompt:** "Create an agent abstraction: system prompt + a shared OpenAI-SDK client (from `LLM_*`
 env) + a `get_agent_context` RAG tool so the agent grounds in the actual document. Findings use the
 `VULNERABILITY / SEVERITY / ATTACK / QUESTION` format with a regex parser (INSPIRATIONS.md §2).
@@ -143,7 +143,7 @@ that runs CFO against a DecisionContext and stores findings in `agent_findings`.
 **STOP / verify:** Tester runs CFO on the sample; gets parsed VULN/SEVERITY/ATTACK/QUESTION findings
 that cite the document, stored.
 
-### T3.2 — Remaining four agents, parallel + SSE fan-out
+### T3.2 — Remaining four agents, parallel + SSE fan-out ✅
 **Prompt:** "Add Market, Competitor, Legal, Execution agents with distinct system prompts. Run all
 five concurrently with an asyncio fan-out that streams each agent's result over SSE as it finishes
 (`agent_start` → `agent_complete` with progress %), per INSPIRATIONS.md §1. Aggregate findings by agent."

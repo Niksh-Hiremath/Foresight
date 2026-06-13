@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers import health
+from routers.intake import router as intake_router
+from routers.agents import router as agents_router
 from rag.store import load_from_db
 
 
@@ -23,3 +25,5 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(intake_router)
+app.include_router(agents_router)
