@@ -251,6 +251,9 @@ export default function Dashboard() {
         {runError && <p className="run-error">{runError}</p>}
       </div>
 
+      {/* ── MiroFish Live View ───────────────────────────────────────── */}
+      {pipelineStage === 'simulating' && <MiroFishLive />}
+
       {/* ── Prominent Verdict Banner ──────────────────────────────────── */}
       {scoreData && <VerdictBannerHero data={scoreData} />}
 
@@ -331,6 +334,54 @@ export default function Dashboard() {
           <h2>No analysis loaded</h2>
           <p>Enter a decision ID above, or go to the <a href="/upload">Upload page</a> to start a new analysis.</p>
         </div>
+      )}
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MiroFish Live View — iframe embed shown during simulation stage
+───────────────────────────────────────────────────────────────────────── */
+
+const MIROFISH_URL = 'http://localhost:3000'
+
+function MiroFishLive() {
+  const [expanded, setExpanded] = useState(true)
+  const [blocked, setBlocked] = useState(false)
+
+  return (
+    <div className="mirofish-panel">
+      <div className="mirofish-panel-header">
+        <div className="mirofish-title-row">
+          <span className="mirofish-dot" />
+          <span className="mirofish-title">MiroFish Simulation — Live</span>
+          <span className="mirofish-subtitle">Watching stakeholder opinion dynamics unfold in real time</span>
+        </div>
+        <div className="mirofish-actions">
+          <a href={MIROFISH_URL} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">
+            Pop out ↗
+          </a>
+          <button className="btn-ghost btn-sm" onClick={() => setExpanded(e => !e)}>
+            {expanded ? 'Collapse ▲' : 'Expand ▼'}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        blocked ? (
+          <div className="mirofish-blocked">
+            <p>MiroFish frontend could not be embedded (browser security policy).</p>
+            <a href={MIROFISH_URL} target="_blank" rel="noreferrer" className="btn-primary">
+              Open MiroFish in new tab →
+            </a>
+          </div>
+        ) : (
+          <iframe
+            className="mirofish-iframe"
+            src={MIROFISH_URL}
+            title="MiroFish Live Simulation"
+            onError={() => setBlocked(true)}
+          />
+        )
       )}
     </div>
   )

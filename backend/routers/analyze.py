@@ -63,7 +63,7 @@ def _build_decision_context(intake) -> str:
 
 class AnalyzeRequest(BaseModel):
     decision_id: str
-    max_sim_rounds: int = 8
+    max_sim_rounds: int = 5
     force_rerun: bool = False
 
 

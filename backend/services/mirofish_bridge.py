@@ -112,7 +112,7 @@ def _normalize(raw: dict) -> dict:
     }
 
 
-def _run_sync(seed_md: str, requirement: str, max_rounds: int = 8) -> dict:
+def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5) -> dict:
     """Blocking 7-step MiroFish pipeline. Intended to be run in a thread executor."""
 
     # 1. Create project + ingest seed document
@@ -153,7 +153,7 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 8) -> dict:
     # 4. Prepare — generate agent personas
     r4 = requests.post(
         f"{MIROFISH_BASE}/simulation/prepare",
-        json={"simulation_id": sim_id, "use_llm_for_profiles": True, "parallel_profile_count": 5},
+        json={"simulation_id": sim_id, "use_llm_for_profiles": True, "parallel_profile_count": 10},
         timeout=_REQUEST_TIMEOUT,
     ).json()
     prepare_task_id = (r4.get("data") or {}).get("task_id")
@@ -161,13 +161,14 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 8) -> dict:
           json_body={"simulation_id": sim_id, "task_id": prepare_task_id},
           key="status", done_states={"ready", "completed"}, interval=5)
 
-    # 5. Start simulation (slowest step)
+    # 5. Start simulation (slowest step) — 10 agents, 5 rounds
     requests.post(
         f"{MIROFISH_BASE}/simulation/start",
         json={
             "simulation_id": sim_id,
             "platform": "parallel",
             "max_rounds": max_rounds,
+            "num_agents": 10,
             "enable_graph_memory_update": False,
         },
         timeout=_REQUEST_TIMEOUT,
@@ -195,7 +196,7 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 8) -> dict:
     return report_data
 
 
-async def run_simulation(seed_md: str, requirement: str, max_rounds: int = 8) -> dict:
+async def run_simulation(seed_md: str, requirement: str, max_rounds: int = 5) -> dict:
     """
     Run the full 7-step MiroFish pipeline (or return stub if unavailable).
     Returns a normalized dict with bull/base/bear/opinion_dynamics.

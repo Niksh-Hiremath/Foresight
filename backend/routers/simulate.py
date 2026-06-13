@@ -15,7 +15,7 @@ class SeedRequest(BaseModel):
 
 class RunRequest(BaseModel):
     decision_id: str
-    max_rounds: int = 8
+    max_rounds: int = 5
     force_rerun: bool = False
 
 
