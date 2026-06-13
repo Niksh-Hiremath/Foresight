@@ -11,6 +11,7 @@ from db.repositories import (
     get_intake_context,
 )
 from models.schemas import AgentFinding
+from models.severity import score_breakdown
 from services.agents.cfo_agent import run_cfo_agent
 from services.agents.market_agent import run_market_agent
 from services.agents.competitor_agent import run_competitor_agent
@@ -202,3 +203,12 @@ async def run_all_agents_sse(req: RunAllRequest):
 async def get_findings(decision_id: str):
     findings = await get_agent_findings(decision_id)
     return {"decision_id": decision_id, "findings": [f.model_dump(mode="json") for f in findings]}
+
+
+@router.get("/score/{decision_id}")
+async def get_risk_score(decision_id: str):
+    findings = await get_agent_findings(decision_id)
+    if not findings:
+        raise HTTPException(404, f"No findings for decision {decision_id}. Run /agents/run-all first.")
+    raw = [f.model_dump(mode="json") for f in findings]
+    return {"decision_id": decision_id, **score_breakdown(raw)}

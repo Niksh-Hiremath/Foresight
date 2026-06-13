@@ -161,7 +161,7 @@ state machine driven by the SSE stream (fetch + ReadableStream, INSPIRATIONS.md 
 badges, expandable ATTACK/QUESTION, cited links for grounded agents."
 **STOP / verify:** Tester watches the five cards animate as agents finish; severities + links render.
 
-### T3.5 — Severity scoring + Risk Score
+### T3.5 — Severity scoring + Risk Score ✅
 **Prompt:** "Add `models/severity.py`: weights CRITICAL 30 / HIGH 15 / MEDIUM 5, +10 if ≥2 agents
 flag CRITICAL, +5 if ≥3 flag HIGH, cap 100; `get_verdict(score)` with thresholds 80 / 50
 (INSPIRATIONS.md §3). Compute the Risk Score from the aggregated findings."

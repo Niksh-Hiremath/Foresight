@@ -144,6 +144,110 @@
 }
 .btn-ghost:hover { color: #94a3b8; }
 
+/* ── Risk Score Card ── */
+.risk-score-card {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 1.5rem 2rem;
+  margin-bottom: 1.75rem;
+  flex-wrap: wrap;
+}
+
+.risk-score-card.verdict-stop { border-color: #dc2626; box-shadow: 0 0 0 1px #dc262622; }
+.risk-score-card.verdict-caution { border-color: #ea580c; box-shadow: 0 0 0 1px #ea580c22; }
+.risk-score-card.verdict-go { border-color: #16a34a; box-shadow: 0 0 0 1px #16a34a22; }
+
+.risk-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 120px;
+}
+
+.gauge-svg { width: 110px; }
+
+.risk-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.risk-score-num {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  line-height: 1;
+}
+
+.risk-score-label {
+  font-size: 0.7rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.risk-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.verdict-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  width: fit-content;
+}
+
+.verdict-banner.verdict-stop { background: #450a0a; color: #fca5a5; }
+.verdict-banner.verdict-caution { background: #431407; color: #fdba74; }
+.verdict-banner.verdict-go { background: #052e16; color: #86efac; }
+
+.verdict-icon { font-size: 1.1rem; }
+
+.risk-breakdown {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.rb-sep { color: #334155; }
+.rb-critical { color: #f87171; font-weight: 600; }
+.rb-high { color: #fb923c; font-weight: 600; }
+.rb-medium { color: #fbbf24; font-weight: 600; }
+
+.risk-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 240px;
+}
+
+.score-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: #64748b;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid #1e293b;
+}
+
+.score-row-label { color: #64748b; }
+.score-bonus { color: #f97316; }
+.score-total { color: #f1f5f9; font-weight: 700; border-top: 1px solid #334155; border-bottom: none; margin-top: 0.15rem; }
+
 /* ── Agent Grid ── */
 .agent-grid {
   display: grid;

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import './Dashboard.css'
 
@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
   const [runError, setRunError] = useState('')
+  const [scoreData, setScoreData] = useState(null)
   const abortRef = useRef(null)
 
   const updateAgent = useCallback((name, patch) => {
@@ -58,6 +59,7 @@ export default function Dashboard() {
     setRunning(true)
     setDone(false)
     setRunError('')
+    setScoreData(null)
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -117,9 +119,21 @@ export default function Dashboard() {
       } else if (ev.event === 'complete') {
         setProgress(100)
         setDone(true)
+        fetch(`${API}/agents/score/${id}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (data) setScoreData(data) })
+          .catch(() => {})
       }
     }
   }, [decisionId, updateAgent])
+
+  useEffect(() => {
+    if (!decisionId) return
+    fetch(`${API}/agents/score/${decisionId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) { setScoreData(data); setDone(true) } })
+      .catch(() => {})
+  }, [decisionId])
 
   const cancelRun = () => {
     abortRef.current?.abort()
@@ -186,6 +200,9 @@ export default function Dashboard() {
         {runError && <p className="run-error">{runError}</p>}
       </div>
 
+      {/* ── Risk Score Card ── */}
+      {scoreData && <RiskScoreCard data={scoreData} />}
+
       {/* ── Agent Grid ── */}
       {decisionId && (
         <div className="agent-grid">
@@ -207,6 +224,68 @@ export default function Dashboard() {
           <p>Enter a decision ID above, or go to the <a href="/upload">Upload page</a> to start a new analysis.</p>
         </div>
       )}
+    </div>
+  )
+}
+
+const VERDICT_CONFIG = {
+  DO_NOT_PROCEED: { cls: 'verdict-stop', icon: '🚫', label: 'DO NOT PROCEED' },
+  PROCEED_WITH_CAUTION: { cls: 'verdict-caution', icon: '⚠️', label: 'PROCEED WITH CAUTION' },
+  PROCEED: { cls: 'verdict-go', icon: '✅', label: 'PROCEED' },
+}
+
+function RiskScoreCard({ data }) {
+  const vc = VERDICT_CONFIG[data.verdict] || VERDICT_CONFIG.PROCEED_WITH_CAUTION
+  const pct = data.risk_score
+
+  return (
+    <div className={`risk-score-card ${vc.cls}`}>
+      <div className="risk-left">
+        <div className="risk-gauge">
+          <svg viewBox="0 0 120 70" className="gauge-svg">
+            <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" strokeWidth="10" strokeLinecap="round" />
+            <path
+              d="M10,60 A50,50 0 0,1 110,60"
+              fill="none"
+              stroke={pct >= 80 ? '#ef4444' : pct >= 50 ? '#f97316' : '#22c55e'}
+              strokeWidth="10"
+              strokeLinecap="round"
+              strokeDasharray={`${(pct / 100) * 157} 157`}
+            />
+            <text x="60" y="58" textAnchor="middle" fontSize="20" fontWeight="700" fill="#f1f5f9">{pct}</text>
+            <text x="60" y="70" textAnchor="middle" fontSize="7" fill="#64748b">/100</text>
+          </svg>
+        </div>
+        <div className="risk-meta">
+          <span className="risk-score-num">{pct}</span>
+          <span className="risk-score-label">Risk Score</span>
+        </div>
+      </div>
+
+      <div className="risk-center">
+        <div className={`verdict-banner ${vc.cls}`}>
+          <span className="verdict-icon">{vc.icon}</span>
+          <span className="verdict-text">{vc.label}</span>
+        </div>
+        <div className="risk-breakdown">
+          <span className="rb-item rb-critical">{data.counts.CRITICAL} critical</span>
+          <span className="rb-sep">·</span>
+          <span className="rb-item rb-high">{data.counts.HIGH} high</span>
+          <span className="rb-sep">·</span>
+          <span className="rb-item rb-medium">{data.counts.MEDIUM} medium</span>
+        </div>
+      </div>
+
+      <div className="risk-right">
+        <div className="score-row"><span className="score-row-label">Base score</span><span>{data.base_score}</span></div>
+        {data.bonus_critical_convergence > 0 && (
+          <div className="score-row score-bonus"><span className="score-row-label">Cross-agent CRITICAL convergence</span><span>+{data.bonus_critical_convergence}</span></div>
+        )}
+        {data.bonus_high_convergence > 0 && (
+          <div className="score-row score-bonus"><span className="score-row-label">Cross-agent HIGH convergence</span><span>+{data.bonus_high_convergence}</span></div>
+        )}
+        <div className="score-row score-total"><span className="score-row-label">Total (capped 100)</span><span>{pct}</span></div>
+      </div>
     </div>
   )
 }
