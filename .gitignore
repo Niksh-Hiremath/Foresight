@@ -5,3 +5,4 @@ redteam/
 .mcp.json
 **/__pycache__/
 *.pyc
+*.log

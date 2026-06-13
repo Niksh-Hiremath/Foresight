@@ -220,7 +220,7 @@ drives the dashboard live."
 **STOP / verify:** One click takes a stored DecisionContext all the way to a verdict on screen, with
 agents streaming in between — no manual per-endpoint calls.
 
-### T5.3 — Dashboard assembly
+### T5.3 — Dashboard assembly ✅
 **Prompt:** "Assemble the full Dashboard: Intake summary → live Findings → Future bands → Verdict +
 GTM → **Remediation Roadmap** (SVG flow: top findings → a remediation action per agent → verdict,
 INSPIRATIONS.md §8), as one scrollable narrative with a prominent verdict banner."

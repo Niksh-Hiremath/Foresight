@@ -177,7 +177,11 @@ export default function Dashboard() {
         case 'simulating':
           setPipelineStage('simulating'); setProgress(ev.progress || 93); break
         case 'sim_started':
-          if (ev.mirofish_url) setMirofishUrl(ev.mirofish_url); break
+          if (ev.mirofish_url) {
+            setMirofishUrl(ev.mirofish_url)
+            window.open(ev.mirofish_url, '_blank', 'noopener,noreferrer')
+          }
+          break
         case 'synthesizing':
           setPipelineStage('synthesizing'); setProgress(ev.progress || 96); break
         case 'complete':
@@ -254,9 +258,15 @@ export default function Dashboard() {
         {runError && <p className="run-error">{runError}</p>}
       </div>
 
-      {/* ── MiroFish Live View — visible during simulation + synthesis ── */}
-      {running && (pipelineStage === 'simulating' || pipelineStage === 'synthesizing') && (
-        <MiroFishLive url={mirofishUrl} />
+      {/* ── MiroFish Live View — opens in new tab when sim_id available ── */}
+      {mirofishUrl && (
+        <div className="mirofish-banner">
+          <span className="mirofish-dot" />
+          <span className="mirofish-banner-text">MiroFish simulation is live</span>
+          <a href={mirofishUrl} target="_blank" rel="noreferrer" className="mirofish-banner-link">
+            Open live view ↗
+          </a>
+        </div>
       )}
 
       {/* ── Prominent Verdict Banner ──────────────────────────────────── */}
@@ -344,59 +354,6 @@ export default function Dashboard() {
   )
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
-   MiroFish Live View — iframe embed shown during simulation stage
-───────────────────────────────────────────────────────────────────────── */
-
-const MIROFISH_HOME = 'http://localhost:3000'
-
-function MiroFishLive({ url }) {
-  const [expanded, setExpanded] = useState(true)
-  const [blocked, setBlocked] = useState(false)
-  // When url arrives (sim started), navigate iframe to the live run view
-  const iframeSrc = url || MIROFISH_HOME
-  const subtitle = url
-    ? 'Live simulation running — graphs and agent dynamics updating in real time'
-    : 'Waiting for simulation to start…'
-
-  return (
-    <div className="mirofish-panel">
-      <div className="mirofish-panel-header">
-        <div className="mirofish-title-row">
-          <span className="mirofish-dot" />
-          <span className="mirofish-title">MiroFish Simulation — Live</span>
-          <span className="mirofish-subtitle">{subtitle}</span>
-        </div>
-        <div className="mirofish-actions">
-          <a href={iframeSrc} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">
-            Pop out ↗
-          </a>
-          <button className="btn-ghost btn-sm" onClick={() => setExpanded(e => !e)}>
-            {expanded ? 'Collapse ▲' : 'Expand ▼'}
-          </button>
-        </div>
-      </div>
-      {expanded && (
-        blocked ? (
-          <div className="mirofish-blocked">
-            <p>MiroFish frontend could not be embedded (browser security policy).</p>
-            <a href={iframeSrc} target="_blank" rel="noreferrer" className="btn-primary">
-              Open MiroFish in new tab →
-            </a>
-          </div>
-        ) : (
-          <iframe
-            key={iframeSrc}
-            className="mirofish-iframe"
-            src={iframeSrc}
-            title="MiroFish Live Simulation"
-            onError={() => setBlocked(true)}
-          />
-        )
-      )}
-    </div>
-  )
-}
 
 /* ─────────────────────────────────────────────────────────────────────────
    Layout helpers
