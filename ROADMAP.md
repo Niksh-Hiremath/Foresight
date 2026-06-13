@@ -174,7 +174,7 @@ Risk Score + verdict.
 
 ## Phase 4 — Simulation bridge (MiroFish)
 
-### T4.1 — Seed composer
+### T4.1 — Seed composer ✅
 **Prompt:** "Add a service that composes a MiroFish seed document from DecisionContext +
 top findings (the decision, market context, key risks) as natural-language seed material."
 **STOP / verify:** Tester reviews a generated seed; it reads like valid MiroFish input.
