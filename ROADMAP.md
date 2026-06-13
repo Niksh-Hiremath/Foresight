@@ -179,7 +179,7 @@ Risk Score + verdict.
 top findings (the decision, market context, key risks) as natural-language seed material."
 **STOP / verify:** Tester reviews a generated seed; it reads like valid MiroFish input.
 
-### T4.2 — Simulation bridge (the documented 7-step pipeline)
+### T4.2 — Simulation bridge (the documented 7-step pipeline) ✅
 **Prompt:** "Implement the MiroFish bridge per `MIROFISH_INTEGRATION.md`: a thin `requests` client
 that chains the 7 Flask endpoints (`/graph/ontology/generate` → `/graph/build` → `/simulation/create`
 → `/simulation/prepare` → `/simulation/start` → `/report/generate` → `/report/by-simulation`) with a
