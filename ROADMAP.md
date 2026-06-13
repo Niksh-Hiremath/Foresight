@@ -155,7 +155,7 @@ visibly disagreeing, all persisted.
 evidence (alongside RAG grounding). Cache results in Mongo keyed by query to avoid re-scraping."
 **STOP / verify:** Tester confirms those two agents cite real, current sources; cache hit on rerun.
 
-### T3.4 — Live agent panel + findings view
+### T3.4 — Live agent panel + findings view ✅
 **Prompt:** "Build the Dashboard agent panel: five cards with a `waiting → thinking → complete`
 state machine driven by the SSE stream (fetch + ReadableStream, INSPIRATIONS.md §7), severity
 badges, expandable ATTACK/QUESTION, cited links for grounded agents."

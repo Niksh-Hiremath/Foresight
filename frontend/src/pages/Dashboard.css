@@ -1,0 +1,419 @@
+.dashboard-page {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+.dash-header {
+  margin-bottom: 2rem;
+}
+
+.dash-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.dash-title-row h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.findings-summary {
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
+.crit-badge {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.dash-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.id-input-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.id-input {
+  flex: 1;
+  max-width: 480px;
+  padding: 0.5rem 0.875rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.id-input:focus {
+  border-color: #6366f1;
+}
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  flex-wrap: wrap;
+}
+
+.id-pill {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-family: monospace;
+}
+
+.progress-bar {
+  flex: 1;
+  max-width: 200px;
+  height: 6px;
+  background: #1e293b;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  transition: width 0.4s ease;
+  border-radius: 3px;
+}
+
+.progress-label {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  min-width: 2.5rem;
+}
+
+.run-error {
+  color: #f87171;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  padding: 0.5rem 1.25rem;
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover:not(:disabled) { background: #4f46e5; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-secondary {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-secondary:hover { border-color: #6366f1; color: #c7d2fe; }
+
+.btn-ghost {
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  color: #64748b;
+  border: none;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.btn-ghost:hover { color: #94a3b8; }
+
+/* ── Agent Grid ── */
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+
+/* ── Agent Card ── */
+.agent-card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 1.25rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-height: 120px;
+}
+
+.agent-card--thinking {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 1px #6366f122;
+}
+
+.agent-card--complete {
+  border-color: #334155;
+}
+
+.agent-card--error {
+  border-color: #dc2626;
+}
+
+.agent-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.agent-icon {
+  font-size: 1.25rem;
+}
+
+.agent-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #e2e8f0;
+  flex: 1;
+}
+
+/* ── Status Chip ── */
+.status-chip {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-waiting {
+  background: #1e293b;
+  color: #64748b;
+}
+
+.status-thinking {
+  background: #312e81;
+  color: #a5b4fc;
+  animation: pulse-chip 1.5s ease-in-out infinite;
+}
+
+.status-complete {
+  background: #14532d;
+  color: #86efac;
+}
+
+.status-error {
+  background: #450a0a;
+  color: #fca5a5;
+}
+
+@keyframes pulse-chip {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ── Thinking animation ── */
+.agent-thinking {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #64748b;
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.agent-thinking p { margin: 0; }
+
+.agent-error-body {
+  color: #f87171;
+  font-size: 0.85rem;
+}
+
+.agent-empty {
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+/* ── Findings ── */
+.findings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.finding-row {
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0a0f1e;
+}
+
+.finding-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.finding-header:hover {
+  background: #1e293b44;
+}
+
+.finding-title {
+  flex: 1;
+  font-size: 0.8125rem;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.expand-icon {
+  font-size: 0.6rem;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+/* ── Severity badges ── */
+.sev-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.sev-critical {
+  background: #450a0a;
+  color: #fca5a5;
+  border: 1px solid #dc2626;
+}
+
+.sev-high {
+  background: #431407;
+  color: #fdba74;
+  border: 1px solid #ea580c;
+}
+
+.sev-medium {
+  background: #422006;
+  color: #fde68a;
+  border: 1px solid #ca8a04;
+}
+
+/* ── Finding expanded body ── */
+.finding-body {
+  padding: 0.75rem;
+  border-top: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.finding-section-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.675rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #475569;
+}
+
+.finding-section-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  line-height: 1.55;
+}
+
+.finding-question {
+  color: #a5b4fc;
+  font-style: italic;
+}
+
+.finding-sources ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+}
+
+.finding-sources li {
+  font-size: 0.75rem;
+  margin-bottom: 0.2rem;
+}
+
+.finding-sources a {
+  color: #818cf8;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.finding-sources a:hover { text-decoration: underline; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 5rem 2rem;
+  color: #475569;
+}
+
+.empty-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h2 {
+  font-size: 1.25rem;
+  color: #64748b;
+  margin: 0 0 0.5rem;
+}
+
+.empty-state p {
+  font-size: 0.9rem;
+}
+
+.empty-state a {
+  color: #818cf8;
+  text-decoration: none;
+}
+
+.empty-state a:hover { text-decoration: underline; }
