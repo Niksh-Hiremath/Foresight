@@ -1,6 +1,8 @@
 """
 MiroFish simulation bridge — chains the 7-step Flask pipeline.
 Falls back to a stub report if MiroFish is unreachable or fails.
+Progress updates are written into the shared sim_info dict so the
+SSE stream in analyze.py can emit sim_progress events in real-time.
 """
 import asyncio
 import time
@@ -9,7 +11,7 @@ import requests
 MIROFISH_BASE = "http://localhost:5001/api"
 _REQUEST_TIMEOUT = 60
 _POLL_INTERVAL = 5
-_POLL_TIMEOUT = 1800  # 30 min hard cap on simulation step
+_POLL_TIMEOUT = 1800  # 30 min hard cap
 
 _STUB_REPORT = {
     "is_stub": True,
@@ -58,26 +60,7 @@ def _is_available() -> bool:
         return False
 
 
-def _poll(method: str, url: str, *, json_body=None, key: str,
-          done_states: set, fail_states: set = None,
-          interval: int = _POLL_INTERVAL, timeout: int = _POLL_TIMEOUT) -> dict:
-    if fail_states is None:
-        fail_states = {"failed", "error"}
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        resp = requests.request(method, url, json=json_body, timeout=_REQUEST_TIMEOUT).json()
-        data = resp.get("data") or {}
-        val = str(data.get(key, "")).lower()
-        if val in done_states:
-            return data
-        if val in fail_states:
-            raise RuntimeError(f"MiroFish step failed at {url}: {resp}")
-        time.sleep(interval)
-    raise TimeoutError(f"MiroFish timed out polling {url} (key={key})")
-
-
 def _normalize(raw: dict) -> dict:
-    """Extract bull/base/bear + opinion_dynamics from raw MiroFish report dict."""
     sections = raw.get("sections") or []
     bull = base = bear = ""
 
@@ -91,7 +74,6 @@ def _normalize(raw: dict) -> dict:
         elif any(k in title for k in ("base", "expect", "neutral", "likely", "moderate")):
             base = content
 
-    # Fall back: split markdown_content into thirds
     if not (bull or base or bear):
         md = raw.get("markdown_content", "")
         paras = [p for p in md.split("\n\n") if p.strip()]
@@ -114,10 +96,18 @@ def _normalize(raw: dict) -> dict:
 
 def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5,
               sim_info: dict | None = None) -> dict:
-    """Blocking 7-step MiroFish pipeline. Intended to be run in a thread executor.
-    sim_info dict is mutated with sim_id as soon as the simulation is created (step 3)."""
+    """
+    Blocking 7-step MiroFish pipeline. Runs in a thread executor.
+    sim_info is mutated at every step with {phase, pct, sim_id}.
+    """
 
-    # 1. Create project + ingest seed document
+    def update(phase: str, pct: int) -> None:
+        if sim_info is not None:
+            sim_info["phase"] = phase
+            sim_info["pct"] = pct
+
+    # ── Step 1: Ontology generation ──────────────────────────────────────────
+    update("Analyzing document & generating ontology", 5)
     r1 = requests.post(
         f"{MIROFISH_BASE}/graph/ontology/generate",
         data={
@@ -126,23 +116,38 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5,
             "additional_context": "",
         },
         files={"files": ("seed.md", seed_md.encode("utf-8"), "text/markdown")},
-        timeout=120,
+        timeout=1800,
     ).json()
     if not r1.get("success"):
         raise RuntimeError(f"Step 1 (ontology/generate) failed: {r1}")
     project_id = r1["data"]["project_id"]
+    update("Ontology generated — building knowledge graph", 15)
 
-    # 2. Build GraphRAG knowledge graph (async task)
+    # ── Step 2: Graph build (async task, poll with sub-progress) ─────────────
     r2 = requests.post(
         f"{MIROFISH_BASE}/graph/build",
         json={"project_id": project_id},
         timeout=_REQUEST_TIMEOUT,
     ).json()
     task_id = r2["data"]["task_id"]
-    _poll("GET", f"{MIROFISH_BASE}/graph/task/{task_id}",
-          key="status", done_states={"completed"})
 
-    # 3. Create simulation
+    deadline = time.time() + _POLL_TIMEOUT
+    while time.time() < deadline:
+        resp = requests.get(f"{MIROFISH_BASE}/graph/task/{task_id}",
+                            timeout=_REQUEST_TIMEOUT).json()
+        data = resp.get("data") or {}
+        status = str(data.get("status", "")).lower()
+        inner_pct = int(data.get("progress") or 0)
+        update("Building knowledge graph", 15 + int(15 * inner_pct / 100))
+        if status == "completed":
+            break
+        if status in ("failed", "error"):
+            raise RuntimeError(f"Step 2 (graph/build) failed: {resp}")
+        time.sleep(_POLL_INTERVAL)
+    update("Knowledge graph ready", 30)
+
+    # ── Step 3: Create simulation ─────────────────────────────────────────────
+    update("Initializing simulation", 32)
     r3 = requests.post(
         f"{MIROFISH_BASE}/simulation/create",
         json={"project_id": project_id, "enable_twitter": True, "enable_reddit": True},
@@ -152,20 +157,37 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5,
         raise RuntimeError(f"Step 3 (simulation/create) failed: {r3}")
     sim_id = r3["data"]["simulation_id"]
     if sim_info is not None:
-        sim_info["sim_id"] = sim_id  # expose early so SSE can emit the URL
+        sim_info["sim_id"] = sim_id
 
-    # 4. Prepare — generate agent personas
+    # ── Step 4: Prepare — generate agent personas (poll with sub-progress) ────
+    update("Preparing agent profiles", 35)
     r4 = requests.post(
         f"{MIROFISH_BASE}/simulation/prepare",
-        json={"simulation_id": sim_id, "use_llm_for_profiles": True, "parallel_profile_count": 10},
+        json={"simulation_id": sim_id, "use_llm_for_profiles": True,
+              "parallel_profile_count": 10},
         timeout=_REQUEST_TIMEOUT,
     ).json()
     prepare_task_id = (r4.get("data") or {}).get("task_id")
-    _poll("POST", f"{MIROFISH_BASE}/simulation/prepare/status",
-          json_body={"simulation_id": sim_id, "task_id": prepare_task_id},
-          key="status", done_states={"ready", "completed"}, interval=5)
 
-    # 5. Start simulation (slowest step) — 10 agents, 5 rounds
+    deadline = time.time() + _POLL_TIMEOUT
+    while time.time() < deadline:
+        resp = requests.post(
+            f"{MIROFISH_BASE}/simulation/prepare/status",
+            json={"simulation_id": sim_id, "task_id": prepare_task_id},
+            timeout=_REQUEST_TIMEOUT,
+        ).json()
+        data = resp.get("data") or {}
+        status = str(data.get("status", "")).lower()
+        inner_pct = int(data.get("progress") or 0)
+        update("Generating agent profiles", 35 + int(20 * inner_pct / 100))
+        if status in ("ready", "completed"):
+            break
+        if status in ("failed", "error"):
+            raise RuntimeError(f"Step 4 (simulation/prepare) failed: {resp}")
+        time.sleep(5)
+    update("Agent profiles ready", 56)
+
+    # ── Step 5: Start simulation & poll run-status with per-round progress ────
     requests.post(
         f"{MIROFISH_BASE}/simulation/start",
         json={
@@ -177,20 +199,52 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5,
         },
         timeout=_REQUEST_TIMEOUT,
     )
-    _poll("GET", f"{MIROFISH_BASE}/simulation/{sim_id}/run-status",
-          key="runner_status", done_states={"completed", "stopped"},
-          interval=10, timeout=_POLL_TIMEOUT)
+    update("Launching agent swarm", 57)
 
-    # 6. Generate report (async)
+    deadline = time.time() + _POLL_TIMEOUT
+    while time.time() < deadline:
+        resp = requests.get(
+            f"{MIROFISH_BASE}/simulation/{sim_id}/run-status",
+            timeout=_REQUEST_TIMEOUT,
+        ).json()
+        data = resp.get("data") or {}
+        runner_status = str(data.get("runner_status", "")).lower()
+        if runner_status in ("completed", "stopped"):
+            update("Agent swarm complete", 85)
+            break
+        if runner_status in ("failed", "error"):
+            raise RuntimeError(f"Step 5 (simulation/run) failed: {resp}")
+        current_round = int(data.get("current_round") or 0)
+        total_rounds = int(data.get("total_rounds") or max_rounds or 1)
+        round_pct = current_round / max(1, total_rounds)
+        update(
+            f"Agent swarm — round {current_round}/{total_rounds}",
+            57 + int(28 * round_pct),
+        )
+        time.sleep(_POLL_INTERVAL)
+
+    # ── Step 6: Generate report ───────────────────────────────────────────────
+    update("Generating swarm report", 87)
     requests.post(
         f"{MIROFISH_BASE}/report/generate",
         json={"simulation_id": sim_id},
         timeout=_REQUEST_TIMEOUT,
     )
-    _poll("GET", f"{MIROFISH_BASE}/report/check/{sim_id}",
-          key="report_status", done_states={"completed"}, interval=5)
 
-    # 7. Fetch final report
+    deadline = time.time() + _POLL_TIMEOUT
+    while time.time() < deadline:
+        resp = requests.get(f"{MIROFISH_BASE}/report/check/{sim_id}",
+                            timeout=_REQUEST_TIMEOUT).json()
+        data = resp.get("data") or {}
+        report_status = str(data.get("report_status", "")).lower()
+        if report_status == "completed":
+            break
+        if report_status in ("failed", "error"):
+            raise RuntimeError(f"Step 6 (report/generate) failed: {resp}")
+        time.sleep(5)
+    update("Fetching final report", 96)
+
+    # ── Step 7: Fetch report ──────────────────────────────────────────────────
     r7 = requests.get(
         f"{MIROFISH_BASE}/report/by-simulation/{sim_id}",
         timeout=_REQUEST_TIMEOUT,
@@ -203,9 +257,9 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5,
 async def run_simulation(seed_md: str, requirement: str, max_rounds: int = 5,
                          sim_info: dict | None = None) -> dict:
     """
-    Run the full 7-step MiroFish pipeline (or return stub if unavailable).
-    Returns a normalized dict with bull/base/bear/opinion_dynamics.
-    sim_info is mutated with sim_id as soon as the simulation is created.
+    Run the full 7-step MiroFish pipeline (or stub if unavailable).
+    Returns a normalized dict with bull/base/bear/opinion_dynamics/markdown_content.
+    sim_info is mutated with {phase, pct, sim_id} throughout execution.
     """
     if not _is_available():
         return dict(_STUB_REPORT)

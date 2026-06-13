@@ -39,12 +39,25 @@ const ALL_AGENTS = ['cfo', 'market', 'competitor', 'legal', 'execution']
 const STAGE_LABELS = {
   agents:      'Running adversarial agents…',
   scoring:     'Computing risk score…',
-  simulating:  'Running scenario simulation…',
+  simulating:  'Running agent swarm simulation…',
+  gtm:         'Generating GTM strategy…',
   synthesizing:'Generating verdict & strategy…',
 }
 
 function initAgents() {
   return Object.fromEntries(ALL_AGENTS.map(a => [a, { status: 'waiting', findings: [] }]))
+}
+
+function downloadTxt(content, filename) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -66,11 +79,25 @@ export default function Dashboard() {
   const [synthesisData, setSynthesisData] = useState(null)
   const [intakeData,    setIntakeData]    = useState(null)
   const [pipelineStage, setPipelineStage] = useState(null)
-  const [mirofishUrl,   setMirofishUrl]   = useState(null)
+  const [simProgress,   setSimProgress]   = useState({ phase: '', pct: 0 })
+  const [reports,       setReports]       = useState({ agentsReport: '', swarmReport: '', gtmReport: '' })
   const abortRef = useRef(null)
 
   const updateAgent = useCallback((name, patch) => {
     setAgents(prev => ({ ...prev, [name]: { ...prev[name], ...patch } }))
+  }, [])
+
+  const fetchReports = useCallback(async (id) => {
+    try {
+      const r = await fetch(`${API}/reports/${id}`)
+      if (!r.ok) return
+      const data = await r.json()
+      setReports({
+        agentsReport: data.agents_report_md || '',
+        swarmReport:  data.swarm_report_md  || '',
+        gtmReport:    data.gtm_report_md    || '',
+      })
+    } catch {}
   }, [])
 
   // ── Load persisted results on page load / decisionId change ──────────
@@ -84,7 +111,6 @@ export default function Dashboard() {
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) { setScoreData(d); setDone(true) } }).catch(() => {})
 
-    // Load per-agent findings so the Remediation Roadmap and agent cards populate
     fetch(`${API}/agents/findings/${decisionId}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -103,7 +129,6 @@ export default function Dashboard() {
         })
       }).catch(() => {})
 
-    // Merge synthesis + simulation for full narrative
     Promise.all([
       fetch(`${API}/synthesize/${decisionId}`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${API}/simulate/result/${decisionId}`).then(r => r.ok ? r.json() : null).catch(() => null),
@@ -118,7 +143,9 @@ export default function Dashboard() {
         })
       }
     })
-  }, [decisionId])
+
+    fetchReports(decisionId)
+  }, [decisionId, fetchReports])
 
   // ── Run full pipeline via POST /analyze ──────────────────────────────
   const runAnalysis = useCallback(async () => {
@@ -127,7 +154,9 @@ export default function Dashboard() {
 
     setAgents(initAgents()); setProgress(0); setRunning(true)
     setDone(false); setRunError(''); setScoreData(null)
-    setSynthesisData(null); setPipelineStage('agents'); setMirofishUrl(null)
+    setSynthesisData(null); setPipelineStage('agents')
+    setSimProgress({ phase: '', pct: 0 })
+    setReports({ agentsReport: '', swarmReport: '', gtmReport: '' })
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -176,22 +205,22 @@ export default function Dashboard() {
           setPipelineStage('scoring'); setProgress(ev.progress || 90); setScoreData(ev); break
         case 'simulating':
           setPipelineStage('simulating'); setProgress(ev.progress || 93); break
-        case 'sim_started':
-          if (ev.mirofish_url) {
-            setMirofishUrl(ev.mirofish_url)
-            window.open(ev.mirofish_url, '_blank', 'noopener,noreferrer')
-          }
-          break
+        case 'sim_progress':
+          setPipelineStage('simulating')
+          setSimProgress({ phase: ev.phase || '', pct: ev.pct || 0 }); break
+        case 'gtm_start':
+          setPipelineStage('gtm'); setProgress(ev.progress || 94); break
         case 'synthesizing':
-          setPipelineStage('synthesizing'); setProgress(ev.progress || 96); break
+          setPipelineStage('synthesizing'); setProgress(ev.progress || 97); break
         case 'complete':
           setProgress(100); setDone(true)
           if (ev.score) setScoreData(ev.score)
           if (ev.report) setSynthesisData(ev.report)
+          if (ev.reports_ready) fetchReports(id)
           break
       }
     }
-  }, [decisionId, updateAgent])
+  }, [decisionId, updateAgent, fetchReports])
 
   const cancelRun = () => { abortRef.current?.abort(); setRunning(false); setPipelineStage(null) }
 
@@ -199,12 +228,15 @@ export default function Dashboard() {
     setDecisionId(''); setInputId(''); setAgents(initAgents())
     setDone(false); setProgress(0); setScoreData(null)
     setSynthesisData(null); setIntakeData(null)
+    setReports({ agentsReport: '', swarmReport: '', gtmReport: '' })
   }
 
   const agentTotal = ALL_AGENTS.reduce((s, a) => s + (agents[a].findings?.length || 0), 0)
   const totalFindings = scoreData?.total_findings ?? agentTotal
   const criticalCount = scoreData?.counts?.CRITICAL ??
     ALL_AGENTS.flatMap(a => agents[a].findings || []).filter(f => f.severity === 'CRITICAL').length
+
+  const slug = decisionId.slice(0, 8) || 'report'
 
   return (
     <div className="dashboard-page">
@@ -255,19 +287,22 @@ export default function Dashboard() {
             <span>{STAGE_LABELS[pipelineStage] || 'Processing…'}</span>
           </div>
         )}
+
+        {/* Swarm progress block — shown during simulation phase */}
+        {running && pipelineStage === 'simulating' && simProgress.phase && (
+          <div className="swarm-progress">
+            <div className="swarm-progress-header">
+              <span className="swarm-phase">{simProgress.phase}</span>
+              <span className="swarm-pct">{simProgress.pct}%</span>
+            </div>
+            <div className="swarm-bar">
+              <div className="swarm-fill" style={{ width: `${simProgress.pct}%` }} />
+            </div>
+          </div>
+        )}
+
         {runError && <p className="run-error">{runError}</p>}
       </div>
-
-      {/* ── MiroFish Live View — opens in new tab when sim_id available ── */}
-      {mirofishUrl && (
-        <div className="mirofish-banner">
-          <span className="mirofish-dot" />
-          <span className="mirofish-banner-text">MiroFish simulation is live</span>
-          <a href={mirofishUrl} target="_blank" rel="noreferrer" className="mirofish-banner-link">
-            Open live view ↗
-          </a>
-        </div>
-      )}
 
       {/* ── Prominent Verdict Banner ──────────────────────────────────── */}
       {scoreData && <VerdictBannerHero data={scoreData} />}
@@ -331,7 +366,7 @@ export default function Dashboard() {
         </DashSection>
       )}
 
-      {/* ── 06 India GTM Strategy ─────────────────────────────────────── */}
+      {/* ── 06 India GTM Strategy (short synthesis version) ──────────── */}
       {synthesisData?.gtm_strategy && (
         <DashSection num="06" title="India GTM Strategy">
           <div className="gtm-body">
@@ -340,6 +375,36 @@ export default function Dashboard() {
             ))}
           </div>
         </DashSection>
+      )}
+
+      {/* ── 07 Five-Agent Report ──────────────────────────────────────── */}
+      {reports.agentsReport && (
+        <DashSectionWithDownload
+          num="07" title="Five-Agent Report"
+          onDownload={() => downloadTxt(reports.agentsReport, `agents-report-${slug}.txt`)}
+        >
+          <ReportDoc content={reports.agentsReport} />
+        </DashSectionWithDownload>
+      )}
+
+      {/* ── 08 Agent Swarm Report ─────────────────────────────────────── */}
+      {reports.swarmReport && (
+        <DashSectionWithDownload
+          num="08" title="Agent Swarm Report"
+          onDownload={() => downloadTxt(reports.swarmReport, `swarm-report-${slug}.txt`)}
+        >
+          <ReportDoc content={reports.swarmReport} />
+        </DashSectionWithDownload>
+      )}
+
+      {/* ── 09 GTM Strategy Report ────────────────────────────────────── */}
+      {reports.gtmReport && (
+        <DashSectionWithDownload
+          num="09" title="GTM Strategy Report"
+          onDownload={() => downloadTxt(reports.gtmReport, `gtm-report-${slug}.txt`)}
+        >
+          <ReportDoc content={reports.gtmReport} />
+        </DashSectionWithDownload>
       )}
 
       {/* ── Empty state ───────────────────────────────────────────────── */}
@@ -367,6 +432,29 @@ function DashSection({ num, title, children }) {
         <h2 className="section-title">{title}</h2>
       </div>
       {children}
+    </div>
+  )
+}
+
+function DashSectionWithDownload({ num, title, children, onDownload }) {
+  return (
+    <div className="dash-section">
+      <div className="section-header">
+        <span className="section-num">{num}</span>
+        <h2 className="section-title">{title}</h2>
+        <button className="btn-download" onClick={onDownload} title="Download as .txt">
+          ↓ .txt
+        </button>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function ReportDoc({ content }) {
+  return (
+    <div className="report-doc">
+      <pre className="report-pre">{content}</pre>
     </div>
   )
 }
@@ -535,10 +623,9 @@ function RemediationRoadmap({ agents, verdict }) {
   const SVG_H = ROWS * ROW_H + 10
   const SVG_W = 900
 
-  // Column x positions
-  const LX = 8, LW = 268       // findings: left edge, width
-  const CX = 348, CW = 210     // actions
-  const VX = 628, VW = 260     // verdict
+  const LX = 8, LW = 268
+  const CX = 348, CW = 210
+  const VX = 628, VW = 260
   const VY = 8, VH = SVG_H - 16
 
   const verdictCY = VY + VH / 2
@@ -553,7 +640,6 @@ function RemediationRoadmap({ agents, verdict }) {
         <span className="rl-item rl-verdict">Verdict</span>
       </div>
       <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="roadmap-svg" aria-label="Remediation roadmap">
-        {/* Verdict box */}
         <rect x={VX} y={VY} width={VW} height={VH} rx="8"
           fill={verdictFill} stroke={verdictStroke} strokeWidth="1.5" />
         <text x={VX + VW / 2} y={verdictCY - 16} textAnchor="middle"
@@ -571,14 +657,11 @@ function RemediationRoadmap({ agents, verdict }) {
           const sevStroke = sev === 'CRITICAL' ? '#dc2626' : sev === 'HIGH' ? '#ea580c' : '#ca8a04'
           const sevText = sev === 'CRITICAL' ? '#fca5a5' : sev === 'HIGH' ? '#fdba74' : '#fde68a'
 
-          const findingText = finding
-            ? _truncate(finding.vulnerability, 42)
-            : 'No findings'
+          const findingText = finding ? _truncate(finding.vulnerability, 42) : 'No findings'
           const actionText = _truncate(AGENT_REMEDIATION[name], 38)
 
           return (
             <g key={name}>
-              {/* Finding box */}
               <rect x={LX} y={cy - 22} width={LW} height={44} rx="5"
                 fill={finding ? sevFill : '#1e293b'} stroke={finding ? sevStroke : '#334155'} strokeWidth="1" />
               <text x={LX + 6} y={cy - 8} fontSize="8.5" fontWeight="600"
@@ -589,24 +672,20 @@ function RemediationRoadmap({ agents, verdict }) {
                 {findingText}
               </text>
 
-              {/* Connector: finding → action */}
               <line x1={LX + LW} y1={cy} x2={CX} y2={cy}
                 stroke="#334155" strokeWidth="1.5" markerEnd="url(#arrow)" />
 
-              {/* Action box */}
               <rect x={CX} y={cy - 22} width={CW} height={44} rx="5"
                 fill="#0f172a" stroke="#4f46e5" strokeWidth="1" />
               <text x={CX + 6} y={cy - 6} fontSize="8.5" fill="#a5b4fc" fontWeight="600">REMEDIATION</text>
               <text x={CX + 6} y={cy + 9} fontSize="9.5" fill="#c7d2fe">{actionText}</text>
 
-              {/* Connector: action → verdict */}
               <line x1={CX + CW} y1={cy} x2={VX} y2={verdictCY}
                 stroke="#334155" strokeWidth="1" strokeDasharray="4 3" />
             </g>
           )
         })}
 
-        {/* Arrow marker */}
         <defs>
           <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
             <path d="M0,0 L6,3 L0,6 Z" fill="#334155" />

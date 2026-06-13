@@ -50,6 +50,7 @@ class Simulation(BaseModel):
     bear: str = ""
     opinion_dynamics: dict[str, Any] = {}
     mirofish_id: str = ""
+    swarm_report_md: str = ""
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -61,4 +62,6 @@ class Verdict(BaseModel):
     executive_summary: str = ""
     key_questions: list[str] = []
     gtm_strategy: str = ""
+    agents_report_md: str = ""
+    gtm_report_md: str = ""
     created_at: datetime = Field(default_factory=_now)

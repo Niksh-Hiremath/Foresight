@@ -1,6 +1,6 @@
 """
 POST /analyze — end-to-end pipeline over SSE.
-Agents (parallel) → severity score → simulation → synthesis → complete.
+Agents (parallel) → severity score → simulation (with progress) → GTM agent → synthesis → complete.
 """
 import asyncio
 import json
@@ -16,8 +16,9 @@ from db.repositories import (
     get_simulation,
     get_verdict as get_stored_verdict,
     create_verdict,
+    create_simulation,
 )
-from models.schemas import AgentFinding, Verdict
+from models.schemas import AgentFinding, Verdict, Simulation
 from models.severity import score_breakdown
 from services.agents.cfo_agent import run_cfo_agent
 from services.agents.market_agent import run_market_agent
@@ -27,6 +28,8 @@ from services.agents.execution_agent import run_execution_agent
 from services.firecrawl_service import get_market_grounding, get_competitor_grounding
 from services.mirofish_bridge import run_simulation
 from services.seed_composer import compose_seed_for_decision
+from services.agents_report import compile_agents_report
+from services.gtm_agent import run_gtm_agent
 from services.synthesis import synthesize
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
@@ -81,7 +84,7 @@ async def run_full_pipeline(req: AnalyzeRequest):
 
         yield sse({"event": "start", "agents": _ALL_AGENTS, "progress": 0})
 
-        # ── Phase 1: Agents ──────────────────────────────────────────
+        # ── Phase 1: Agents ──────────────────────────────────────────────────
         for name in _ALL_AGENTS:
             yield sse({"event": "agent_start", "agent": name})
 
@@ -136,12 +139,12 @@ async def run_full_pipeline(req: AnalyzeRequest):
                 yield sse({"event": "agent_complete", "agent": agent_name,
                            "findings": saved, "progress": progress})
 
-        # ── Phase 2: Severity score ──────────────────────────────────
+        # ── Phase 2: Severity score ──────────────────────────────────────────
         all_findings_raw = [f.model_dump(mode="json") for f in await get_agent_findings(req.decision_id)]
         score_info = score_breakdown(all_findings_raw)
         yield sse({"event": "scoring", "progress": 90, **score_info})
 
-        # ── Phase 3: Simulation ──────────────────────────────────────
+        # ── Phase 3: Simulation ──────────────────────────────────────────────
         yield sse({"event": "simulating", "progress": 93})
 
         existing_sim = await get_simulation(req.decision_id)
@@ -151,8 +154,10 @@ async def run_full_pipeline(req: AnalyzeRequest):
                 "base": existing_sim.base,
                 "bear": existing_sim.bear,
                 "opinion_dynamics": existing_sim.opinion_dynamics,
+                "markdown_content": existing_sim.swarm_report_md,
                 "is_stub": not existing_sim.mirofish_id,
             }
+            swarm_report_md = existing_sim.swarm_report_md
         else:
             seed_result = await compose_seed_for_decision(req.decision_id)
             requirement = (
@@ -163,24 +168,22 @@ async def run_full_pipeline(req: AnalyzeRequest):
             sim_task = asyncio.create_task(
                 run_simulation(seed_result["seed"], requirement, req.max_sim_rounds, sim_info)
             )
-            sim_id_emitted = False
+            last_phase = None
+            last_pct = None
             while not sim_task.done():
-                # As soon as MiroFish creates the simulation, emit the live-view URL
-                if not sim_id_emitted and sim_info.get("sim_id"):
-                    yield sse({
-                        "event": "sim_started",
-                        "sim_id": sim_info["sim_id"],
-                        "mirofish_url": f"http://localhost:3000/simulation/{sim_info['sim_id']}/start",
-                    })
-                    sim_id_emitted = True
+                phase = sim_info.get("phase")
+                pct = sim_info.get("pct")
+                if phase and (phase != last_phase or pct != last_pct):
+                    yield sse({"event": "sim_progress", "phase": phase, "pct": pct or 0})
+                    last_phase = phase
+                    last_pct = pct
                 try:
-                    await asyncio.wait_for(asyncio.shield(sim_task), timeout=10)
+                    await asyncio.wait_for(asyncio.shield(sim_task), timeout=5)
                 except asyncio.TimeoutError:
                     yield ": heartbeat\n\n"
             sim_result = sim_task.result()
+            swarm_report_md = sim_result.get("markdown_content", "")
 
-            from models.schemas import Simulation
-            from db.repositories import create_simulation
             sim_doc = Simulation(
                 decision_id=req.decision_id,
                 seed=seed_result["seed"],
@@ -189,33 +192,48 @@ async def run_full_pipeline(req: AnalyzeRequest):
                 bear=sim_result.get("bear", ""),
                 opinion_dynamics=sim_result.get("opinion_dynamics", {}),
                 mirofish_id=sim_result.get("mirofish_id", ""),
+                swarm_report_md=swarm_report_md,
             )
             await create_simulation(sim_doc)
             sim_dict = sim_result
 
-        # ── Phase 4: Synthesis ───────────────────────────────────────
-        yield sse({"event": "synthesizing", "progress": 96})
+        # ── Phase 4: Compile agents report (instant) ─────────────────────────
+        agents_report_md = compile_agents_report(all_findings_raw, intake)
 
+        # ── Phase 5: GTM agent + Synthesis (parallel LLM calls) ─────────────
+        yield sse({"event": "gtm_start", "progress": 94})
+
+        seed_text = locals().get("seed_result", {}).get("seed", "")
+        gtm_task = asyncio.create_task(
+            run_gtm_agent(
+                seed_content=seed_text,
+                agents_report_md=agents_report_md,
+                swarm_report_md=swarm_report_md,
+            )
+        )
+        synth_task = asyncio.create_task(synthesize(all_findings_raw, sim_dict))
+
+        pending_final = {gtm_task, synth_task}
+        gtm_done = synth_done = False
+        while pending_final:
+            done_set, pending_final = await asyncio.wait(
+                pending_final, return_when=asyncio.FIRST_COMPLETED, timeout=10
+            )
+            if not done_set:
+                yield ": heartbeat\n\n"
+                continue
+            if gtm_task in done_set:
+                gtm_done = True
+            if synth_task in done_set:
+                synth_done = True
+                yield sse({"event": "synthesizing", "progress": 97})
+
+        gtm_report_md = gtm_task.result()
+        report = synth_task.result()
+
+        # ── Phase 6: Persist verdict with all reports ─────────────────────────
         existing_verdict = await get_stored_verdict(req.decision_id)
-        if existing_verdict and not req.force_rerun:
-            report = {
-                "risk_score": existing_verdict.risk_score,
-                "verdict": existing_verdict.verdict,
-                "verdict_label": existing_verdict.verdict,
-                "executive_summary": existing_verdict.executive_summary,
-                "key_questions": existing_verdict.key_questions,
-                "gtm_strategy": existing_verdict.gtm_strategy,
-                "is_fallback": False,
-            }
-        else:
-            synth_task = asyncio.create_task(synthesize(all_findings_raw, sim_dict))
-            while not synth_task.done():
-                try:
-                    await asyncio.wait_for(asyncio.shield(synth_task), timeout=10)
-                except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
-            report = synth_task.result()
-
+        if not existing_verdict or req.force_rerun:
             verdict_doc = Verdict(
                 decision_id=req.decision_id,
                 risk_score=report["risk_score"],
@@ -223,13 +241,16 @@ async def run_full_pipeline(req: AnalyzeRequest):
                 executive_summary=report["executive_summary"],
                 key_questions=report.get("key_questions", []),
                 gtm_strategy=report.get("gtm_strategy", ""),
+                agents_report_md=agents_report_md,
+                gtm_report_md=gtm_report_md,
             )
             await create_verdict(verdict_doc)
 
-        # ── Complete ─────────────────────────────────────────────────
+        # ── Complete ──────────────────────────────────────────────────────────
         yield sse({
             "event": "complete",
             "progress": 100,
+            "reports_ready": True,
             "score": score_info,
             "report": {
                 **report,

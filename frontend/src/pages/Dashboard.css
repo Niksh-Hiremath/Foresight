@@ -224,31 +224,32 @@
 
 .roadmap-svg { width: 100%; border-radius: 10px; overflow: visible; }
 
-/* ── MiroFish Live Panel ── */
-.mirofish-banner {
-  display: flex; align-items: center; gap: 0.75rem;
+/* ── Swarm simulation progress ── */
+.swarm-progress {
+  margin-top: 0.625rem;
   background: #0a0f1e;
-  border: 1px solid #22d3ee44;
-  border-radius: 10px;
-  padding: 0.7rem 1.25rem;
-  margin-bottom: 1.5rem;
+  border: 1px solid #312e81;
+  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+  display: flex; flex-direction: column; gap: 0.35rem;
 }
-.mirofish-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  background: #22d3ee;
-  box-shadow: 0 0 6px #22d3ee;
-  animation: mf-pulse 1.4s ease-in-out infinite;
+.swarm-progress-header {
+  display: flex; justify-content: space-between; align-items: center;
 }
-@keyframes mf-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.75); }
+.swarm-phase {
+  font-size: 0.775rem; color: #a5b4fc; font-family: monospace;
 }
-.mirofish-banner-text { font-size: 0.85rem; color: #94a3b8; flex: 1; }
-.mirofish-banner-link {
-  font-size: 0.82rem; color: #22d3ee; font-weight: 600;
-  text-decoration: none; white-space: nowrap;
+.swarm-pct {
+  font-size: 0.75rem; font-weight: 700; color: #818cf8;
+  min-width: 2.5rem; text-align: right;
 }
-.mirofish-banner-link:hover { text-decoration: underline; }
+.swarm-bar {
+  height: 4px; background: #1e293b; border-radius: 2px; overflow: hidden;
+}
+.swarm-fill {
+  height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8);
+  transition: width 0.6s ease; border-radius: 2px;
+}
 
 /* ── Agent Grid ── */
 .agent-grid {
@@ -371,6 +372,46 @@
   display: flex; flex-direction: column; gap: 0.875rem;
 }
 .gtm-body p { margin: 0; font-size: 0.875rem; color: #94a3b8; line-height: 1.65; }
+
+/* ── Download button ── */
+.btn-download {
+  margin-left: auto;
+  padding: 0.2rem 0.6rem;
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #334155;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.btn-download:hover { border-color: #6366f1; color: #a5b4fc; }
+
+/* ── Report document viewer ── */
+.report-doc {
+  background: #0a0f1e;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  overflow: hidden;
+  max-height: 480px;
+  overflow-y: auto;
+}
+.report-doc::-webkit-scrollbar { width: 6px; }
+.report-doc::-webkit-scrollbar-track { background: #0a0f1e; }
+.report-doc::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.report-pre {
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  font-family: 'Menlo', 'Consolas', monospace;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: #94a3b8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* ── Empty state ── */
 .empty-state { text-align: center; padding: 5rem 2rem; color: #475569; }
