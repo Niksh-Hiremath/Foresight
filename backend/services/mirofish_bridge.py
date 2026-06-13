@@ -112,8 +112,10 @@ def _normalize(raw: dict) -> dict:
     }
 
 
-def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5) -> dict:
-    """Blocking 7-step MiroFish pipeline. Intended to be run in a thread executor."""
+def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5,
+              sim_info: dict | None = None) -> dict:
+    """Blocking 7-step MiroFish pipeline. Intended to be run in a thread executor.
+    sim_info dict is mutated with sim_id as soon as the simulation is created (step 3)."""
 
     # 1. Create project + ingest seed document
     r1 = requests.post(
@@ -149,6 +151,8 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5) -> dict:
     if not r3.get("success"):
         raise RuntimeError(f"Step 3 (simulation/create) failed: {r3}")
     sim_id = r3["data"]["simulation_id"]
+    if sim_info is not None:
+        sim_info["sim_id"] = sim_id  # expose early so SSE can emit the URL
 
     # 4. Prepare — generate agent personas
     r4 = requests.post(
@@ -196,10 +200,12 @@ def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5) -> dict:
     return report_data
 
 
-async def run_simulation(seed_md: str, requirement: str, max_rounds: int = 5) -> dict:
+async def run_simulation(seed_md: str, requirement: str, max_rounds: int = 5,
+                         sim_info: dict | None = None) -> dict:
     """
     Run the full 7-step MiroFish pipeline (or return stub if unavailable).
     Returns a normalized dict with bull/base/bear/opinion_dynamics.
+    sim_info is mutated with sim_id as soon as the simulation is created.
     """
     if not _is_available():
         return dict(_STUB_REPORT)
@@ -207,7 +213,7 @@ async def run_simulation(seed_md: str, requirement: str, max_rounds: int = 5) ->
     try:
         loop = asyncio.get_event_loop()
         raw = await loop.run_in_executor(
-            None, lambda: _run_sync(seed_md, requirement, max_rounds)
+            None, lambda: _run_sync(seed_md, requirement, max_rounds, sim_info)
         )
         return _normalize(raw)
     except Exception as exc:

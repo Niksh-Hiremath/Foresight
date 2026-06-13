@@ -159,10 +159,20 @@ async def run_full_pipeline(req: AnalyzeRequest):
                 f"Predict stakeholder and market reactions over 24 months if: "
                 f"{intake.core_decision[:300]}"
             )
+            sim_info: dict = {}
             sim_task = asyncio.create_task(
-                run_simulation(seed_result["seed"], requirement, req.max_sim_rounds)
+                run_simulation(seed_result["seed"], requirement, req.max_sim_rounds, sim_info)
             )
+            sim_id_emitted = False
             while not sim_task.done():
+                # As soon as MiroFish creates the simulation, emit the live-view URL
+                if not sim_id_emitted and sim_info.get("sim_id"):
+                    yield sse({
+                        "event": "sim_started",
+                        "sim_id": sim_info["sim_id"],
+                        "mirofish_url": f"http://localhost:3000/simulation/{sim_info['sim_id']}/start",
+                    })
+                    sim_id_emitted = True
                 try:
                     await asyncio.wait_for(asyncio.shield(sim_task), timeout=10)
                 except asyncio.TimeoutError:
