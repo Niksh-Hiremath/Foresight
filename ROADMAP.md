@@ -202,7 +202,7 @@ the MiroFish world."
 
 ## Phase 5 — Synthesis + GTM
 
-### T5.1 — Synthesis agent
+### T5.1 — Synthesis agent ✅
 **Prompt:** "Add a synthesis service: fuse findings + simulation into a JSON report — Risk Score,
 executive summary (adversarial tone), verdict, the 3 questions, and an India-specific GTM strategy
 (channels, pricing posture, sequencing). Include a deterministic fallback that rebuilds the report

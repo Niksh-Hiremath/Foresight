@@ -6,6 +6,7 @@ from routers import health
 from routers.intake import router as intake_router
 from routers.agents import router as agents_router
 from routers.simulate import router as simulate_router
+from routers.synthesize import router as synthesize_router
 from rag.store import load_from_db
 
 
@@ -29,3 +30,4 @@ app.include_router(health.router)
 app.include_router(intake_router)
 app.include_router(agents_router)
 app.include_router(simulate_router)
+app.include_router(synthesize_router)
