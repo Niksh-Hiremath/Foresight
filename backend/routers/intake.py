@@ -60,3 +60,21 @@ async def submit_answers(req: AnswersRequest):
         return {"status": "ok", "intake_id": intake_id}
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+
+
+@router.get("/context/{decision_id}")
+async def get_context(decision_id: str):
+    from db.repositories import get_intake_context
+    ctx = await get_intake_context(decision_id)
+    if not ctx:
+        raise HTTPException(404, f"No intake context for decision {decision_id}")
+    return {
+        "decision_id": ctx.decision_id,
+        "core_decision": ctx.core_decision,
+        "market": ctx.market,
+        "stated_beliefs": ctx.stated_beliefs,
+        "financial_posture": ctx.financial_posture,
+        "gaps": ctx.gaps,
+        "follow_up_answers": ctx.follow_up_answers,
+        "follow_up_questions": ctx.follow_up_questions,
+    }
