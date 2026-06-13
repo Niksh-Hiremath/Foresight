@@ -23,7 +23,7 @@ flowchart TD
     end
 
     subgraph External["External services"]
-        G[(Gemini API - GCP)]
+        G[(LLM API - OpenAI SDK, env-configured)]
         F[(Firecrawl - search/scrape)]
         M[(MongoDB Atlas)]
     end
@@ -34,22 +34,25 @@ flowchart TD
     end
 
     U --> I --> A --> B --> S --> D
-    I -. Gemini .-> G
-    A -. Gemini .-> G
+    I -. OpenAI SDK .-> G
+    A -. OpenAI SDK .-> G
     A -. web grounding .-> F
-    S -. Gemini .-> G
+    S -. OpenAI SDK .-> G
     I & A & B & S <--> M
     B -- seed in / report out --> MF
-    MF -. Gemini via OpenAI-compat .-> G
+    MF -. OpenAI SDK same .env .-> G
     MF <--> Z
     W -. iframe/link .-> MF
 ```
 
 ## The three external boundaries
 
-1. **Gemini (GCP)** — single LLM for everything. Your agents call it via the native SDK;
-   MiroFish calls the *same* Gemini through Google's OpenAI-compatible endpoint
-   (`https://generativelanguage.googleapis.com/v1beta/openai/`). One key, one provider.
+1. **LLM via OpenAI SDK (provider set in `.env`)** — everything (your agents *and* MiroFish)
+   talks to one OpenAI-SDK-compatible endpoint. `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` are
+   always read from `.env`, never hardcoded. Default provider is Gemini via its OpenAI-compatible
+   endpoint (`https://generativelanguage.googleapis.com/v1beta/openai/`) — this keeps the Gemini
+   partner-prize eligibility. Swap the three env values to use any other provider (OpenAI, Qwen,
+   OpenRouter, a local model) with zero code changes.
 2. **Firecrawl** — grounding for the Market + Competitor agents. Use `/search` (web search +
    scrape in one) and `/scrape` for specific competitor pages. Needs `FIRECRAWL_API_KEY`
    (free tier ~limited credits — cache aggressively, don't re-scrape during the demo).
@@ -91,18 +94,22 @@ Start on B, attempt A only if the backend exposes an obvious trigger/report rout
 
 ## Consolidated environment variables
 
-```env
-# Your orchestrator
-GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-3-flash          # confirm exact current string
-FIRECRAWL_API_KEY=...
-MONGODB_URI=mongodb+srv://...        # Atlas M0 free
+All LLM access goes through the OpenAI SDK; the three `LLM_*` values are **always** loaded from
+`.env` — provider and model are never hardcoded anywhere in the codebase.
 
-# MiroFish (.env in its own repo) — reuse the Gemini key via OpenAI-compat
-LLM_API_KEY=${GEMINI_API_KEY}
-LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
-LLM_MODEL_NAME=gemini-3-flash
-ZEP_API_KEY=...                      # app.getzep.com free tier
+```env
+# Your orchestrator — LLM via OpenAI SDK, fully env-driven
+LLM_API_KEY=...
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/   # default: Gemini; swap freely
+LLM_MODEL=gemini-3-flash             # any model the configured provider exposes
+FIRECRAWL_API_KEY=...
+MONGODB_URI=mongodb+srv://...         # Atlas M0 free
+
+# MiroFish (.env in its own repo) — same provider, its own var names
+LLM_API_KEY=${LLM_API_KEY}
+LLM_BASE_URL=${LLM_BASE_URL}
+LLM_MODEL_NAME=${LLM_MODEL}
+ZEP_API_KEY=...                       # app.getzep.com free tier
 ```
 
 ## MiroFish hard facts (from repo, v0.1.2)
@@ -116,7 +123,7 @@ ZEP_API_KEY=...                      # app.getzep.com free tier
 
 ## Day-one validation checklist (do these before building features)
 
-- [ ] Gemini OpenAI-compat endpoint works with **tool calling** (MiroFish ReportAgent needs it).
+- [ ] The `.env`-configured LLM (OpenAI SDK) works with **tool calling** (MiroFish ReportAgent needs it).
 - [ ] MiroFish runs end-to-end on one machine with a tiny scenario (few agents, ~10 rounds).
 - [ ] Measure one small simulation's runtime + token cost → set demo agent/round caps from that.
 - [ ] Firecrawl `/search` returns usable grounding for an Indian-market query.

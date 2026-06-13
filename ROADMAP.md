@@ -11,8 +11,13 @@
 For each task: paste the **Prompt** into Claude Code, let it build, then the tester runs the
 **STOP / verify** block. If it fails, fix before moving on. Keep `.env` populated as you go.
 
-Stack recap: React+Vite frontend (:5173) · FastAPI orchestrator (:8000) · Gemini (GCP) ·
-Firecrawl · MongoDB Atlas (M0) · MiroFish sidecar (Vue :3000 / API :5001).
+Stack recap: React+Vite frontend (:5173) · FastAPI orchestrator (:8000) · LLM via OpenAI SDK
+(provider/model from `.env`; default Gemini) · Firecrawl · MongoDB Atlas (M0) ·
+MiroFish sidecar (Vue :3000 / API :5001).
+
+> **LLM rule for every task below:** all LLM calls use the OpenAI Python SDK, built from
+> `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` read from `.env`. Never hardcode a provider,
+> base URL, or model string anywhere. Build one shared client and reuse it.
 
 ---
 
@@ -20,35 +25,37 @@ Firecrawl · MongoDB Atlas (M0) · MiroFish sidecar (Vue :3000 / API :5001).
 
 These exist to catch the project-killers in the first few hours, not at hour 30.
 
-### T0.1 — Gemini native SDK hello world
-**Prompt:** "Create `spikes/gemini_native.py`. Load `GEMINI_API_KEY` from `.env`. Use the
-Google Gen AI SDK to send one prompt to `gemini-3-flash` and print the response. Add a
-`requirements.txt`."
-**STOP / verify:** Tester runs it; a real completion prints. Confirms key + billing + model string.
+### T0.1 — OpenAI SDK hello world (env-driven) ✅
+**Prompt:** "Create `spikes/llm_hello.py`. Load `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` from
+`.env`. Use the OpenAI Python SDK configured with those three values (nothing hardcoded) to send
+one chat completion and print the response. Add a `requirements.txt`."
+**STOP / verify:** Tester runs it; a real completion prints. Confirms key + base_url + model + billing.
 
-### T0.2 — Gemini OpenAI-compat tool-calling (HIGHEST RISK)
-**Prompt:** "Create `spikes/gemini_openai_compat.py` using the OpenAI Python SDK pointed at
-`https://generativelanguage.googleapis.com/v1beta/openai/` with the Gemini key. Define one
-function tool (`get_weather(city)`), send a prompt that should trigger it, and print whether
-the model returned a valid tool call."
-**STOP / verify:** Tester confirms a well-formed tool call comes back. ✅ = MiroFish can use Gemini.
-❌ = plan to run MiroFish internals on Qwen-plus; note it and continue.
+### T0.2 — Tool-calling on the env LLM (HIGHEST RISK) ✅
+**Prompt:** "Create `spikes/llm_toolcall.py` using the OpenAI Python SDK configured from
+`LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` (.env only). Define one function tool
+(`get_weather(city)`), send a prompt that should trigger it, and print whether the model
+returned a valid tool call."
+**STOP / verify:** Tester confirms a well-formed tool call comes back. ✅ = MiroFish + your agents are
+good on this provider. ❌ = swap `.env` to a provider that supports tool-calling (e.g. OpenAI/Qwen)
+and rerun — no code changes needed.
 
-### T0.3 — MiroFish local run, tiny scenario
+### T0.3 — MiroFish local run, tiny scenario ✅
 **Prompt (mostly manual):** "Clone `666ghj/MiroFish`. Verify Node 18+, Python 3.11–3.12, uv.
-Create its `.env` with `LLM_*` pointed at Gemini OpenAI-compat + `ZEP_API_KEY`. Run
+Create its `.env` with `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL_NAME` set to the SAME values
+your orchestrator uses (copy from your `.env`) + `ZEP_API_KEY`. Run
 `npm run setup:all` then `npm run dev`. Configure the smallest possible scenario (few agents,
 ~10 rounds)."
 **STOP / verify:** Tester loads MiroFish at :3000, runs one tiny simulation to completion, and
 **records elapsed time + token cost**. Those numbers set the demo's agent/round caps.
 
-### T0.4 — Firecrawl smoke test
+### T0.4 — Firecrawl smoke test ✅
 **Prompt:** "Create `spikes/firecrawl_search.py`. Call Firecrawl `/search` with an
 Indian-market query (e.g. 'India edtech market size 2026 competitors') and print the top
 results + scraped snippets."
 **STOP / verify:** Tester sees usable grounded text. Note remaining free credits.
 
-### T0.5 — MongoDB Atlas connection
+### T0.5 — MongoDB Atlas connection ✅
 **Prompt:** "Create `spikes/mongo_ping.py`. Connect to `MONGODB_URI` (Atlas M0), insert one
 doc into a `smoke` collection, read it back, print it."
 **STOP / verify:** Tester confirms round-trip works (IP allowlist / network access set up).
@@ -89,8 +96,8 @@ python-docx). Store the raw text in `decisions`. Return a `decision_id`."
 **STOP / verify:** Tester uploads a sample pitch PDF; text is extracted and stored; id returned.
 
 ### T2.2 — Gemini intake → DecisionContext + follow-ups
-**Prompt:** "Add a service that sends the parsed text to Gemini and returns a structured
-`DecisionContext` (core decision, market, stated beliefs, financial posture, gaps) PLUS 3–5
+**Prompt:** "Add a service that sends the parsed text to the LLM (OpenAI SDK, env-configured) and
+returns a structured `DecisionContext` (core decision, market, stated beliefs, financial posture, gaps) PLUS 3–5
 adaptive follow-up questions (MCQ/text) targeting the gaps. Expose `POST /intake/analyze`
 (takes decision_id) and `POST /intake/answers` (saves answers into `intake_context`)."
 **STOP / verify:** Tester runs analyze on the sample; gets sensible questions; submitting answers
@@ -108,8 +115,9 @@ questions as a form (MCQ + text) → submit answers → show a 'context ready' s
 ## Phase 3 — Adversarial agents (core engine)
 
 ### T3.1 — Agent framework + first agent (CFO)
-**Prompt:** "Create an agent abstraction (system prompt + Gemini call + structured findings
-output: {claim, severity 1-5, evidence}). Implement the CFO agent (financial inconsistencies,
+**Prompt:** "Create an agent abstraction (system prompt + LLM call via a shared OpenAI-SDK client
+built from `LLM_*` env vars + structured findings output: {claim, severity 1-5, evidence}).
+Implement the CFO agent (financial inconsistencies,
 inflated metrics, runway). Add `POST /agents/run` that runs CFO against a DecisionContext and
 stores findings."
 **STOP / verify:** Tester runs CFO on the sample; gets scored, relevant findings stored.
@@ -190,7 +198,7 @@ running the full pipeline against cached MiroFish output. Add a 'reset demo' but
 
 ### T6.3 — Submission assets
 **Prompt:** "Write the README (problem, architecture diagram, stack, partner-tech usage for
-Gemini + MongoDB prizes, setup steps) and a short demo script."
+Gemini — default LLM provider via OpenAI SDK — + MongoDB prizes, setup steps) and a short demo script."
 **STOP / verify:** Tester follows the README from scratch on the other laptop; it works.
 
 **Final gate:** demo runs reliably + submission complete before the 3:30 PM Jun 14 window closes.

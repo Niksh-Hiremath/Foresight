@@ -69,18 +69,20 @@ Five agents attack from distinct angles, running in parallel, visibly disagreein
 
 ## Team split (2 people)
 
-- **Person A — frontend + orchestration glue:** landing/signup/connector screens, upload UI,
-  adaptive Q&A flow, dashboard + outcome-band visualization, wiring stages together.
-- **Person B — intelligence layer:** 5 adversarial agents, web-search grounding,
-  MiroFish integration + pre-run harness, synthesis/GTM agent.
-- Integrate end-to-end by the halfway mark. The seams are the #1 risk, not any single stage.
+- **Builder** — drives Claude Code through the entire build (see ROADMAP.md): scaffolding,
+  intake, the five agents, MiroFish bridge, synthesis, mock screens.
+- **Tester** — verifies each task at its STOP gate; owns the demo dataset, the Indian
+  cautionary-tale case, the fallback recording, and the README walkthrough on a second machine.
+- Never skip a gate; integrate end-to-end early. The seams are the #1 risk, not any single stage.
 
-## Partner-prize strategy (target 3)
+## Partner-prize strategy (target 2)
 
-- **Sarvam AI** ($155 pool) — use for the India-market reasoning agents. Perfect narrative fit.
-- **Gemini** (Google swag) — orchestration + synthesis. Matches the inspiration's stack.
+- **Gemini** (Google swag) — the default LLM provider, accessed through the OpenAI SDK with
+  `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` from `.env`. Powers intake, the five agents, and
+  synthesis. Provider is env-swappable, but Gemini is the default → keeps prize eligibility.
 - **MongoDB** — store decisions, agent transcripts, verdicts, simulation reports.
 - Optional flourishes if time: **n8n** (visual orchestration), **ElevenLabs** (voiced verdict readout).
+- (Sarvam AI dropped — consolidated on a single env-configured LLM.)
 
 ## Suggested timeline
 
