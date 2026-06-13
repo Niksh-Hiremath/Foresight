@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from db.repositories import create_simulation, get_simulation, get_intake_context
 from models.schemas import Simulation
 from services.seed_composer import compose_seed_for_decision
-from services.mirofish_bridge import run_simulation
+
 
 router = APIRouter(prefix="/simulate", tags=["simulate"])
 
@@ -52,29 +52,27 @@ async def run_mirofish(req: RunRequest):
         f"if the following decision is executed: {core_decision[:300]}"
     )
 
-    # Run simulation (or get stub if MiroFish is down)
-    result = await run_simulation(
+    # Start MiroFish project (Step 1)
+    from services.mirofish_bridge import start_mirofish_project
+    result = await start_mirofish_project(
         seed_md=seed_result["seed"],
-        requirement=requirement,
-        max_rounds=req.max_rounds,
+        requirement=requirement
     )
+
+    project_id = result.get("project_id", "")
 
     # Persist to simulations collection
     doc = Simulation(
         decision_id=req.decision_id,
         seed=seed_result["seed"],
-        bull=result.get("bull", ""),
-        base=result.get("base", ""),
-        bear=result.get("bear", ""),
-        opinion_dynamics=result.get("opinion_dynamics", {}),
-        mirofish_id=result.get("mirofish_id", ""),
+        mirofish_id=project_id,
     )
     await create_simulation(doc)
 
     return {
         **_simulation_response(doc),
-        "is_stub": result.get("is_stub", False),
-        "stub_reason": result.get("stub_reason"),
+        "is_stub": project_id == "",
+        "stub_reason": result.get("error"),
     }
 
 

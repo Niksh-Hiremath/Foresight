@@ -179,7 +179,6 @@ export default function Dashboard() {
         case 'sim_started':
           if (ev.mirofish_url) {
             setMirofishUrl(ev.mirofish_url)
-            window.open(ev.mirofish_url, '_blank', 'noopener,noreferrer')
           }
           break
         case 'synthesizing':
@@ -258,13 +257,13 @@ export default function Dashboard() {
         {runError && <p className="run-error">{runError}</p>}
       </div>
 
-      {/* ── MiroFish Live View — opens in new tab when sim_id available ── */}
+      {/* ── MiroFish Live View — opens in new tab when project_id available ── */}
       {mirofishUrl && (
         <div className="mirofish-banner">
           <span className="mirofish-dot" />
-          <span className="mirofish-banner-text">MiroFish simulation is live</span>
-          <a href={mirofishUrl} target="_blank" rel="noreferrer" className="mirofish-banner-link">
-            Open live view ↗
+          <span className="mirofish-banner-text">MiroFish initialization complete</span>
+          <a href={mirofishUrl} target="_blank" rel="noreferrer" className="mirofish-banner-link" style={{background: '#4ade80', color: '#000', padding: '8px 16px', borderRadius: '4px', textDecoration: 'none', fontWeight: 'bold'}}>
+            View the Simulation Layer ↗
           </a>
         </div>
       )}

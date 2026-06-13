@@ -25,7 +25,7 @@ from services.agents.competitor_agent import run_competitor_agent
 from services.agents.legal_agent import run_legal_agent
 from services.agents.execution_agent import run_execution_agent
 from services.firecrawl_service import get_market_grounding, get_competitor_grounding
-from services.mirofish_bridge import run_simulation
+
 from services.seed_composer import compose_seed_for_decision
 from services.synthesis import synthesize
 
@@ -141,57 +141,29 @@ async def run_full_pipeline(req: AnalyzeRequest):
         score_info = score_breakdown(all_findings_raw)
         yield sse({"event": "scoring", "progress": 90, **score_info})
 
-        # ── Phase 3: Simulation ──────────────────────────────────────
+        # ── Phase 3: MiroFish Handoff ────────────────────────────────
         yield sse({"event": "simulating", "progress": 93})
 
-        existing_sim = await get_simulation(req.decision_id)
-        if existing_sim and not req.force_rerun:
-            sim_dict = {
-                "bull": existing_sim.bull,
-                "base": existing_sim.base,
-                "bear": existing_sim.bear,
-                "opinion_dynamics": existing_sim.opinion_dynamics,
-                "is_stub": not existing_sim.mirofish_id,
-            }
-        else:
-            seed_result = await compose_seed_for_decision(req.decision_id)
-            requirement = (
-                f"Predict stakeholder and market reactions over 24 months if: "
-                f"{intake.core_decision[:300]}"
-            )
-            sim_info: dict = {}
-            sim_task = asyncio.create_task(
-                run_simulation(seed_result["seed"], requirement, req.max_sim_rounds, sim_info)
-            )
-            sim_id_emitted = False
-            while not sim_task.done():
-                # As soon as MiroFish creates the simulation, emit the live-view URL
-                if not sim_id_emitted and sim_info.get("sim_id"):
-                    yield sse({
-                        "event": "sim_started",
-                        "sim_id": sim_info["sim_id"],
-                        "mirofish_url": f"http://localhost:3000/simulation/{sim_info['sim_id']}/start",
-                    })
-                    sim_id_emitted = True
-                try:
-                    await asyncio.wait_for(asyncio.shield(sim_task), timeout=10)
-                except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
-            sim_result = sim_task.result()
-
-            from models.schemas import Simulation
-            from db.repositories import create_simulation
-            sim_doc = Simulation(
-                decision_id=req.decision_id,
-                seed=seed_result["seed"],
-                bull=sim_result.get("bull", ""),
-                base=sim_result.get("base", ""),
-                bear=sim_result.get("bear", ""),
-                opinion_dynamics=sim_result.get("opinion_dynamics", {}),
-                mirofish_id=sim_result.get("mirofish_id", ""),
-            )
-            await create_simulation(sim_doc)
-            sim_dict = sim_result
+        seed_result = await compose_seed_for_decision(req.decision_id)
+        requirement = (
+            f"Predict stakeholder and market reactions over 24 months if: "
+            f"{intake.core_decision[:300]}"
+        )
+        
+        # Start MiroFish project (Step 1) and get project_id
+        from services.mirofish_bridge import start_mirofish_project
+        mirofish_result = await start_mirofish_project(seed_result["seed"], requirement)
+        project_id = mirofish_result.get("project_id")
+        
+        if project_id:
+            yield sse({
+                "event": "sim_started",
+                "project_id": project_id,
+                "mirofish_url": f"http://localhost:3000/process/{project_id}",
+            })
+            
+        # We don't wait for full simulation anymore, just pass empty dict to synthesis
+        sim_dict = {}
 
         # ── Phase 4: Synthesis ───────────────────────────────────────
         yield sse({"event": "synthesizing", "progress": 96})

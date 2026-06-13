@@ -1,220 +1,59 @@
 """
-MiroFish simulation bridge — chains the 7-step Flask pipeline.
-Falls back to a stub report if MiroFish is unreachable or fails.
+MiroFish Bridge
+Simplifies the handoff from the Foresight 5-agent layer to MiroFish.
+It takes the compiled agent findings and sends them to MiroFish's first step
+(Ontology Generation). It returns the project_id so the UI can redirect the user.
 """
-import asyncio
-import time
 import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 MIROFISH_BASE = "http://localhost:5001/api"
-_REQUEST_TIMEOUT = 60
-_POLL_INTERVAL = 5
-_POLL_TIMEOUT = 1800  # 30 min hard cap on simulation step
-
-_STUB_REPORT = {
-    "is_stub": True,
-    "bull": (
-        "**Bull Scenario (12–24 months):** Disciplined execution of the AI-native roadmap "
-        "unlocks 15–20% productivity gains across delivery units. Clients accelerate migration "
-        "spend; Infosys Topaz becomes the reference platform for AI-first transformation in "
-        "BFSI and retail verticals. Margin uplift of 80–120 bps materialises ahead of guidance. "
-        "Stakeholder sentiment converges around the brand narrative; institutional investors "
-        "re-rate the stock at a 10–15% premium to sector peers."
-    ),
-    "base": (
-        "**Base Scenario (12–24 months):** Partial execution — 60% of planned AI-native "
-        "initiatives reach production. Competitive pressure from hyperscaler-native offerings "
-        "limits net-new client wins, though renewals hold. Margin uplift lands at 40–60 bps, "
-        "below guidance. Stakeholder opinion remains divided: founders and delivery leadership "
-        "are optimistic; institutional investors maintain a 'show-me' stance pending proof-of-scale "
-        "case studies. Regulatory scrutiny on AI labour displacement adds process overhead."
-    ),
-    "bear": (
-        "**Bear Scenario (12–24 months):** Key risks materialise — critical talent gaps slow "
-        "the transformation timeline by 6–9 months. A regulatory ruling on AI-led offshoring "
-        "in two target markets triggers client contract renegotiations (est. 3–5% revenue at risk). "
-        "Hyperscaler price wars compress the addressable AI services margin. Board confidence erodes; "
-        "two senior execution sponsors depart. The USD 300–400B market-size thesis is revised "
-        "downward, and the growth trajectory reverts to the pre-AI baseline of 4–5% CC."
-    ),
-    "opinion_dynamics": {
-        "founders": "Optimistic throughout; belief in long-term thesis remains strong.",
-        "institutional_investors": "Shift from skeptical to cautiously positive only in bull; flat in base; exit in bear.",
-        "regulators": "Risk-averse; introduce friction in base/bear scenarios around AI labour norms.",
-        "enterprise_clients": "Demand proof-of-concept; commit in bull, defer in base, freeze in bear.",
-        "talent_market": "Constrained supply amplifies execution risk in base and bear.",
-    },
-    "mirofish_id": "",
-    "markdown_content": "",
-    "sections": [],
-}
-
+_REQUEST_TIMEOUT = 300
 
 def _is_available() -> bool:
     try:
-        r = requests.get("http://localhost:5001/health", timeout=5)
+        r = requests.get(f"http://localhost:5001/health", timeout=5)
         return r.ok
     except Exception:
         return False
 
-
-def _poll(method: str, url: str, *, json_body=None, key: str,
-          done_states: set, fail_states: set = None,
-          interval: int = _POLL_INTERVAL, timeout: int = _POLL_TIMEOUT) -> dict:
-    if fail_states is None:
-        fail_states = {"failed", "error"}
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        resp = requests.request(method, url, json=json_body, timeout=_REQUEST_TIMEOUT).json()
-        data = resp.get("data") or {}
-        val = str(data.get(key, "")).lower()
-        if val in done_states:
-            return data
-        if val in fail_states:
-            raise RuntimeError(f"MiroFish step failed at {url}: {resp}")
-        time.sleep(interval)
-    raise TimeoutError(f"MiroFish timed out polling {url} (key={key})")
-
-
-def _normalize(raw: dict) -> dict:
-    """Extract bull/base/bear + opinion_dynamics from raw MiroFish report dict."""
-    sections = raw.get("sections") or []
-    bull = base = bear = ""
-
-    for s in sections:
-        title = (s.get("title") or "").lower()
-        content = s.get("content") or ""
-        if any(k in title for k in ("bull", "optimist", "upside", "positive")):
-            bull = content
-        elif any(k in title for k in ("bear", "pessim", "downside", "risk")):
-            bear = content
-        elif any(k in title for k in ("base", "expect", "neutral", "likely", "moderate")):
-            base = content
-
-    # Fall back: split markdown_content into thirds
-    if not (bull or base or bear):
-        md = raw.get("markdown_content", "")
-        paras = [p for p in md.split("\n\n") if p.strip()]
-        third = max(1, len(paras) // 3)
-        bull = "\n\n".join(paras[:third]) if paras else ""
-        base = "\n\n".join(paras[third:2*third]) if paras else ""
-        bear = "\n\n".join(paras[2*third:]) if paras else ""
-
-    return {
-        "is_stub": False,
-        "bull": bull,
-        "base": base,
-        "bear": bear,
-        "opinion_dynamics": raw.get("opinion_dynamics") or {},
-        "mirofish_id": raw.get("_simulation_id", ""),
-        "markdown_content": raw.get("markdown_content", ""),
-        "sections": sections,
-    }
-
-
-def _run_sync(seed_md: str, requirement: str, max_rounds: int = 5,
-              sim_info: dict | None = None) -> dict:
-    """Blocking 7-step MiroFish pipeline. Intended to be run in a thread executor.
-    sim_info dict is mutated with sim_id as soon as the simulation is created (step 3)."""
-
-    # 1. Create project + ingest seed document
-    r1 = requests.post(
-        f"{MIROFISH_BASE}/graph/ontology/generate",
-        data={
-            "project_name": "Foresight Analysis",
-            "simulation_requirement": requirement,
-            "additional_context": "",
-        },
-        files={"files": ("seed.md", seed_md.encode("utf-8"), "text/markdown")},
-        timeout=120,
-    ).json()
-    if not r1.get("success"):
-        raise RuntimeError(f"Step 1 (ontology/generate) failed: {r1}")
-    project_id = r1["data"]["project_id"]
-
-    # 2. Build GraphRAG knowledge graph (async task)
-    r2 = requests.post(
-        f"{MIROFISH_BASE}/graph/build",
-        json={"project_id": project_id},
-        timeout=_REQUEST_TIMEOUT,
-    ).json()
-    task_id = r2["data"]["task_id"]
-    _poll("GET", f"{MIROFISH_BASE}/graph/task/{task_id}",
-          key="status", done_states={"completed"})
-
-    # 3. Create simulation
-    r3 = requests.post(
-        f"{MIROFISH_BASE}/simulation/create",
-        json={"project_id": project_id, "enable_twitter": True, "enable_reddit": True},
-        timeout=_REQUEST_TIMEOUT,
-    ).json()
-    if not r3.get("success"):
-        raise RuntimeError(f"Step 3 (simulation/create) failed: {r3}")
-    sim_id = r3["data"]["simulation_id"]
-    if sim_info is not None:
-        sim_info["sim_id"] = sim_id  # expose early so SSE can emit the URL
-
-    # 4. Prepare — generate agent personas
-    r4 = requests.post(
-        f"{MIROFISH_BASE}/simulation/prepare",
-        json={"simulation_id": sim_id, "use_llm_for_profiles": True, "parallel_profile_count": 10},
-        timeout=_REQUEST_TIMEOUT,
-    ).json()
-    prepare_task_id = (r4.get("data") or {}).get("task_id")
-    _poll("POST", f"{MIROFISH_BASE}/simulation/prepare/status",
-          json_body={"simulation_id": sim_id, "task_id": prepare_task_id},
-          key="status", done_states={"ready", "completed"}, interval=5)
-
-    # 5. Start simulation (slowest step) — 10 agents, 5 rounds
-    requests.post(
-        f"{MIROFISH_BASE}/simulation/start",
-        json={
-            "simulation_id": sim_id,
-            "platform": "parallel",
-            "max_rounds": max_rounds,
-            "num_agents": 10,
-            "enable_graph_memory_update": False,
-        },
-        timeout=_REQUEST_TIMEOUT,
-    )
-    _poll("GET", f"{MIROFISH_BASE}/simulation/{sim_id}/run-status",
-          key="runner_status", done_states={"completed", "stopped"},
-          interval=10, timeout=_POLL_TIMEOUT)
-
-    # 6. Generate report (async)
-    requests.post(
-        f"{MIROFISH_BASE}/report/generate",
-        json={"simulation_id": sim_id},
-        timeout=_REQUEST_TIMEOUT,
-    )
-    _poll("GET", f"{MIROFISH_BASE}/report/check/{sim_id}",
-          key="report_status", done_states={"completed"}, interval=5)
-
-    # 7. Fetch final report
-    r7 = requests.get(
-        f"{MIROFISH_BASE}/report/by-simulation/{sim_id}",
-        timeout=_REQUEST_TIMEOUT,
-    ).json()
-    report_data = r7.get("data") or {}
-    report_data["_simulation_id"] = sim_id
-    return report_data
-
-
-async def run_simulation(seed_md: str, requirement: str, max_rounds: int = 5,
-                         sim_info: dict | None = None) -> dict:
+async def start_mirofish_project(seed_md: str, requirement: str) -> dict:
     """
-    Run the full 7-step MiroFish pipeline (or return stub if unavailable).
-    Returns a normalized dict with bull/base/bear/opinion_dynamics.
-    sim_info is mutated with sim_id as soon as the simulation is created.
+    Starts a MiroFish project by uploading the seed document.
+    Returns a dict containing the project_id.
     """
     if not _is_available():
-        return dict(_STUB_REPORT)
+        logger.warning("MiroFish backend is unavailable at localhost:5001")
+        return {"project_id": None, "error": "MiroFish is unreachable"}
 
     try:
-        loop = asyncio.get_event_loop()
-        raw = await loop.run_in_executor(
-            None, lambda: _run_sync(seed_md, requirement, max_rounds, sim_info)
+        logger.info("Initializing MiroFish project with seed document...")
+        resp = requests.post(
+            f"{MIROFISH_BASE}/graph/ontology/generate",
+            data={
+                "project_name": "Foresight Analysis",
+                "simulation_requirement": requirement,
+                "additional_context": "",
+            },
+            files={"files": ("seed.md", seed_md.encode("utf-8"), "text/markdown")},
+            timeout=_REQUEST_TIMEOUT,
         )
-        return _normalize(raw)
-    except Exception as exc:
-        return {**dict(_STUB_REPORT), "stub_reason": str(exc)}
+        
+        if resp.status_code != 200:
+            logger.error(f"MiroFish returned {resp.status_code}: {resp.text}")
+            resp.raise_for_status()
+        
+        result = resp.json()
+        if not result.get("success"):
+            logger.error(f"MiroFish ontology generation failed: {result}")
+            return {"project_id": None, "error": result.get("error", "Unknown error")}
+            
+        project_id = result["data"]["project_id"]
+        logger.info(f"MiroFish project initialized successfully: {project_id}")
+        return {"project_id": project_id, "error": None}
+        
+    except Exception as e:
+        logger.exception("Failed to initialize MiroFish project")
+        return {"project_id": None, "error": str(e)}
