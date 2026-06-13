@@ -28,6 +28,13 @@ const SEV_CONFIG = {
 
 const ALL_AGENTS = ['cfo', 'market', 'competitor', 'legal', 'execution']
 
+const STAGE_LABELS = {
+  agents: 'Running adversarial agents…',
+  scoring: 'Computing risk score…',
+  simulating: 'Running scenario simulation…',
+  synthesizing: 'Generating verdict & strategy…',
+}
+
 function initAgents() {
   return Object.fromEntries(ALL_AGENTS.map(a => [a, { status: 'waiting', findings: [] }]))
 }
@@ -43,6 +50,8 @@ export default function Dashboard() {
   const [done, setDone] = useState(false)
   const [runError, setRunError] = useState('')
   const [scoreData, setScoreData] = useState(null)
+  const [synthesisData, setSynthesisData] = useState(null)
+  const [pipelineStage, setPipelineStage] = useState(null)
   const abortRef = useRef(null)
 
   const updateAgent = useCallback((name, patch) => {
@@ -60,12 +69,14 @@ export default function Dashboard() {
     setDone(false)
     setRunError('')
     setScoreData(null)
+    setSynthesisData(null)
+    setPipelineStage('agents')
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
     try {
-      const res = await fetch(`${API}/agents/run-all`, {
+      const res = await fetch(`${API}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision_id: id }),
@@ -106,38 +117,54 @@ export default function Dashboard() {
       }
     } finally {
       setRunning(false)
+      setPipelineStage(null)
     }
 
     function handleEvent(ev) {
       if (ev.event === 'agent_start') {
         updateAgent(ev.agent, { status: 'thinking' })
+        setPipelineStage('agents')
       } else if (ev.event === 'agent_complete') {
         updateAgent(ev.agent, { status: 'complete', findings: ev.findings || [] })
         setProgress(ev.progress || 0)
       } else if (ev.event === 'agent_error') {
         updateAgent(ev.agent, { status: 'error', errorMsg: ev.error || 'Unknown error' })
+      } else if (ev.event === 'scoring') {
+        setPipelineStage('scoring')
+        setProgress(ev.progress || 90)
+        setScoreData(ev)
+      } else if (ev.event === 'simulating') {
+        setPipelineStage('simulating')
+        setProgress(ev.progress || 93)
+      } else if (ev.event === 'synthesizing') {
+        setPipelineStage('synthesizing')
+        setProgress(ev.progress || 96)
       } else if (ev.event === 'complete') {
         setProgress(100)
         setDone(true)
-        fetch(`${API}/agents/score/${id}`)
-          .then(r => r.ok ? r.json() : null)
-          .then(data => { if (data) setScoreData(data) })
-          .catch(() => {})
+        if (ev.score) setScoreData(ev.score)
+        if (ev.report) setSynthesisData(ev.report)
       }
     }
   }, [decisionId, updateAgent])
 
+  // Load persisted results on page load
   useEffect(() => {
     if (!decisionId) return
     fetch(`${API}/agents/score/${decisionId}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) { setScoreData(data); setDone(true) } })
       .catch(() => {})
+    fetch(`${API}/synthesize/${decisionId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setSynthesisData(data) })
+      .catch(() => {})
   }, [decisionId])
 
   const cancelRun = () => {
     abortRef.current?.abort()
     setRunning(false)
+    setPipelineStage(null)
   }
 
   const totalFindings = ALL_AGENTS.reduce((s, a) => s + (agents[a].findings?.length || 0), 0)
@@ -190,12 +217,24 @@ export default function Dashboard() {
                   {done ? 'Re-run Analysis' : 'Run Red Team Analysis →'}
                 </button>
               )}
-              <button className="btn-ghost" onClick={() => { setDecisionId(''); setInputId(''); setAgents(initAgents()); setDone(false); setProgress(0) }}>
+              <button className="btn-ghost" onClick={() => {
+                setDecisionId(''); setInputId('')
+                setAgents(initAgents()); setDone(false)
+                setProgress(0); setScoreData(null); setSynthesisData(null)
+              }}>
                 Change ID
               </button>
             </div>
           )}
         </div>
+
+        {/* Pipeline stage indicator */}
+        {running && pipelineStage && (
+          <div className="pipeline-stage">
+            <div className="thinking-dots"><span /><span /><span /></div>
+            <span>{STAGE_LABELS[pipelineStage] || 'Processing…'}</span>
+          </div>
+        )}
 
         {runError && <p className="run-error">{runError}</p>}
       </div>
@@ -203,15 +242,14 @@ export default function Dashboard() {
       {/* ── Risk Score Card ── */}
       {scoreData && <RiskScoreCard data={scoreData} />}
 
+      {/* ── Synthesis Card ── */}
+      {synthesisData && <SynthesisCard data={synthesisData} />}
+
       {/* ── Agent Grid ── */}
       {decisionId && (
         <div className="agent-grid">
           {ALL_AGENTS.map(name => (
-            <AgentCard
-              key={name}
-              name={name}
-              state={agents[name]}
-            />
+            <AgentCard key={name} name={name} state={agents[name]} />
           ))}
         </div>
       )}
@@ -228,11 +266,15 @@ export default function Dashboard() {
   )
 }
 
+/* ── Verdict config ─────────────────────────────────────────────────── */
+
 const VERDICT_CONFIG = {
   DO_NOT_PROCEED: { cls: 'verdict-stop', icon: '🚫', label: 'DO NOT PROCEED' },
   PROCEED_WITH_CAUTION: { cls: 'verdict-caution', icon: '⚠️', label: 'PROCEED WITH CAUTION' },
   PROCEED: { cls: 'verdict-go', icon: '✅', label: 'PROCEED' },
 }
+
+/* ── Risk Score Card ─────────────────────────────────────────────────── */
 
 function RiskScoreCard({ data }) {
   const vc = VERDICT_CONFIG[data.verdict] || VERDICT_CONFIG.PROCEED_WITH_CAUTION
@@ -268,27 +310,102 @@ function RiskScoreCard({ data }) {
           <span className="verdict-text">{vc.label}</span>
         </div>
         <div className="risk-breakdown">
-          <span className="rb-item rb-critical">{data.counts.CRITICAL} critical</span>
+          <span className="rb-item rb-critical">{data.counts?.CRITICAL ?? 0} critical</span>
           <span className="rb-sep">·</span>
-          <span className="rb-item rb-high">{data.counts.HIGH} high</span>
+          <span className="rb-item rb-high">{data.counts?.HIGH ?? 0} high</span>
           <span className="rb-sep">·</span>
-          <span className="rb-item rb-medium">{data.counts.MEDIUM} medium</span>
+          <span className="rb-item rb-medium">{data.counts?.MEDIUM ?? 0} medium</span>
         </div>
       </div>
 
       <div className="risk-right">
         <div className="score-row"><span className="score-row-label">Base score</span><span>{data.base_score}</span></div>
         {data.bonus_critical_convergence > 0 && (
-          <div className="score-row score-bonus"><span className="score-row-label">Cross-agent CRITICAL convergence</span><span>+{data.bonus_critical_convergence}</span></div>
+          <div className="score-row score-bonus"><span className="score-row-label">Cross-agent CRITICAL</span><span>+{data.bonus_critical_convergence}</span></div>
         )}
         {data.bonus_high_convergence > 0 && (
-          <div className="score-row score-bonus"><span className="score-row-label">Cross-agent HIGH convergence</span><span>+{data.bonus_high_convergence}</span></div>
+          <div className="score-row score-bonus"><span className="score-row-label">Cross-agent HIGH</span><span>+{data.bonus_high_convergence}</span></div>
         )}
         <div className="score-row score-total"><span className="score-row-label">Total (capped 100)</span><span>{pct}</span></div>
       </div>
     </div>
   )
 }
+
+/* ── Synthesis Card ──────────────────────────────────────────────────── */
+
+function SynthesisCard({ data }) {
+  const [gtmOpen, setGtmOpen] = useState(false)
+  const [simOpen, setSimOpen] = useState(false)
+  const hasSim = data.bull || data.base || data.bear
+
+  return (
+    <div className="synthesis-card">
+      {/* Executive Summary */}
+      <div className="synth-section">
+        <h3 className="synth-heading">Executive Summary</h3>
+        <p className="synth-body">{data.executive_summary}</p>
+      </div>
+
+      {/* Key Questions */}
+      {data.key_questions?.length > 0 && (
+        <div className="synth-section">
+          <h3 className="synth-heading">3 Questions to Ask Before Signing</h3>
+          <ol className="synth-questions">
+            {data.key_questions.map((q, i) => (
+              <li key={i} className="synth-question-item">{q}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* GTM Strategy — collapsible */}
+      {data.gtm_strategy && (
+        <div className="synth-section">
+          <button className="synth-collapse-btn" onClick={() => setGtmOpen(o => !o)}>
+            <span>India GTM Strategy</span>
+            <span className="expand-icon">{gtmOpen ? '▲' : '▼'}</span>
+          </button>
+          {gtmOpen && (
+            <div className="synth-gtm">
+              {data.gtm_strategy.split('\n\n').map((para, i) => (
+                <p key={i}>{para}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Simulation scenarios — collapsible */}
+      {hasSim && (
+        <div className="synth-section">
+          <button className="synth-collapse-btn" onClick={() => setSimOpen(o => !o)}>
+            <span>Scenario Simulation</span>
+            <span className="expand-icon">{simOpen ? '▲' : '▼'}</span>
+          </button>
+          {simOpen && (
+            <div className="sim-bands">
+              {data.bull && <ScenarioBand label="Bull" cls="band-bull" text={data.bull} />}
+              {data.base && <ScenarioBand label="Base" cls="band-base" text={data.base} />}
+              {data.bear && <ScenarioBand label="Bear" cls="band-bear" text={data.bear} />}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ScenarioBand({ label, cls, text }) {
+  return (
+    <div className={`scenario-band ${cls}`}>
+      <span className="band-label">{label}</span>
+      <p className="band-text">{text}</p>
+    </div>
+  )
+}
+
+/* ── Agent Card ──────────────────────────────────────────────────────── */
 
 function AgentCard({ name, state }) {
   const { status, findings = [], errorMsg } = state
@@ -303,17 +420,13 @@ function AgentCard({ name, state }) {
 
       {status === 'thinking' && (
         <div className="agent-thinking">
-          <div className="thinking-dots">
-            <span /><span /><span />
-          </div>
+          <div className="thinking-dots"><span /><span /><span /></div>
           <p>Analyzing decision context…</p>
         </div>
       )}
 
       {status === 'error' && (
-        <div className="agent-error-body">
-          <p>{errorMsg}</p>
-        </div>
+        <div className="agent-error-body"><p>{errorMsg}</p></div>
       )}
 
       {status === 'complete' && findings.length === 0 && (
@@ -322,9 +435,7 @@ function AgentCard({ name, state }) {
 
       {status === 'complete' && findings.length > 0 && (
         <div className="findings-list">
-          {findings.map(f => (
-            <FindingRow key={f.id} finding={f} />
-          ))}
+          {findings.map(f => <FindingRow key={f.id} finding={f} />)}
         </div>
       )}
     </div>
@@ -336,6 +447,8 @@ function StatusChip({ status }) {
   return <span className={`status-chip status-${status}`}>{labels[status] || status}</span>
 }
 
+/* ── Finding Row ─────────────────────────────────────────────────────── */
+
 function FindingRow({ finding }) {
   const [expanded, setExpanded] = useState(false)
   const sev = SEV_CONFIG[finding.severity] || SEV_CONFIG.MEDIUM
@@ -343,7 +456,8 @@ function FindingRow({ finding }) {
 
   return (
     <div className="finding-row">
-      <div className="finding-header" onClick={() => setExpanded(e => !e)} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && setExpanded(v => !v)}>
+      <div className="finding-header" onClick={() => setExpanded(e => !e)}
+        role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && setExpanded(v => !v)}>
         <span className={`sev-badge ${sev.cls}`}>{sev.label}</span>
         <span className="finding-title">{finding.vulnerability}</span>
         <span className="expand-icon">{expanded ? '▲' : '▼'}</span>
@@ -365,11 +479,9 @@ function FindingRow({ finding }) {
               <ul>
                 {finding.sources.map((src, i) => (
                   <li key={i}>
-                    {src.startsWith('http') ? (
-                      <a href={src} target="_blank" rel="noopener noreferrer">{src}</a>
-                    ) : (
-                      <span>{src}</span>
-                    )}
+                    {src.startsWith('http')
+                      ? <a href={src} target="_blank" rel="noopener noreferrer">{src}</a>
+                      : <span>{src}</span>}
                   </li>
                 ))}
               </ul>

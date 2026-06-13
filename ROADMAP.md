@@ -211,7 +211,7 @@ Expose `POST /synthesize`."
 **STOP / verify:** Tester gets a coherent verdict + 3 questions + GTM that reflects the findings/sim;
 forcing a bad-JSON response still yields a valid report via the fallback.
 
-### T5.2 — End-to-end pipeline orchestration (the glue that makes it a product)
+### T5.2 — End-to-end pipeline orchestration (the glue that makes it a product) ✅
 **Prompt:** "Add `POST /analyze` that runs the whole pipeline for a `decision_id` and streams it over
 SSE: load DecisionContext → fan out the 5 agents (reuse the T3.2 stream: `agent_start`/`agent_complete`)
 → severity score → MiroFish bridge (or cached/stub) → synthesis → emit a final `complete` event with

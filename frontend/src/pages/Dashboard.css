@@ -521,3 +521,135 @@
 }
 
 .empty-state a:hover { text-decoration: underline; }
+
+/* ── Pipeline stage indicator ── */
+.pipeline-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: #a5b4fc;
+}
+
+/* ── Synthesis Card ── */
+.synthesis-card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 1.5rem 2rem;
+  margin-bottom: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.synth-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.synth-heading {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #475569;
+}
+
+.synth-body {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #94a3b8;
+  line-height: 1.65;
+}
+
+.synth-questions {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.synth-question-item {
+  font-size: 0.875rem;
+  color: #a5b4fc;
+  line-height: 1.55;
+  font-style: italic;
+}
+
+.synth-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 0.5rem 0.875rem;
+  color: #64748b;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: border-color 0.15s, color 0.15s;
+}
+.synth-collapse-btn:hover { border-color: #334155; color: #94a3b8; }
+
+.synth-gtm {
+  padding: 0.75rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.synth-gtm p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+/* ── Scenario Simulation Bands ── */
+.sim-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.scenario-band {
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  gap: 0.875rem;
+  align-items: flex-start;
+}
+
+.band-bull { background: #052e16; border: 1px solid #166534; }
+.band-base { background: #1e1b4b; border: 1px solid #3730a3; }
+.band-bear { background: #450a0a; border: 1px solid #991b1b; }
+
+.band-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+  padding-top: 0.1rem;
+  min-width: 2.5rem;
+}
+.band-bull .band-label { color: #86efac; }
+.band-base .band-label { color: #a5b4fc; }
+.band-bear .band-label { color: #fca5a5; }
+
+.band-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.band-bull .band-text { color: #bbf7d0; }
+.band-base .band-text { color: #c7d2fe; }
+.band-bear .band-text { color: #fecaca; }
