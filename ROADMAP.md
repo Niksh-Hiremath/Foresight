@@ -150,7 +150,7 @@ five concurrently with an asyncio fan-out that streams each agent's result over 
 **STOP / verify:** Tester sees five distinct perspectives stream in one-by-one (not all at once),
 visibly disagreeing, all persisted.
 
-### T3.3 — Firecrawl grounding (Market + Competitor)
+### T3.3 — Firecrawl grounding (Market + Competitor) ✅
 **Prompt:** "Give the Market and Competitor agents a Firecrawl `/search` tool so they cite live
 evidence (alongside RAG grounding). Cache results in Mongo keyed by query to avoid re-scraping."
 **STOP / verify:** Tester confirms those two agents cite real, current sources; cache hit on rerun.
