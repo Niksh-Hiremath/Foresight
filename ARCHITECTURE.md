@@ -1,6 +1,7 @@
-# Architecture — RedTeam
+# Architecture — Foresight
 
-> Stack (locked): **Gemini API (GCP)** for all reasoning · **Firecrawl** for web grounding ·
+> Stack (locked): **LLM via OpenAI SDK** (provider/model from `.env`; default Gemini) for all
+> reasoning · **two-layer RAG** for document grounding · **Firecrawl** for web grounding ·
 > **MongoDB Atlas (free)** for persistence · **MiroFish (local)** for future simulation.
 
 ## Component map
@@ -17,9 +18,10 @@ flowchart TD
 
     subgraph Orchestrator["Orchestrator backend — FastAPI / Python (:8000)"]
         I[Intake service: parse doc + extract decision + gen follow-ups]
-        A[Agent service: 5 adversarial agents]
+        R[RAG: two-layer chunk+tag, Atlas Vector / keyword fallback]
+        A[Agent service: 5 adversarial agents, parallel asyncio]
         B[Simulation bridge]
-        S[Synthesis service: verdict + GTM]
+        S[Synthesis: severity score + verdict + GTM + remediation]
     end
 
     subgraph External["External services"]
@@ -34,11 +36,14 @@ flowchart TD
     end
 
     U --> I --> A --> B --> S --> D
+    I --> R
+    A -. retrieve context .-> R
+    A == SSE stream ==> D
     I -. OpenAI SDK .-> G
     A -. OpenAI SDK .-> G
     A -. web grounding .-> F
     S -. OpenAI SDK .-> G
-    I & A & B & S <--> M
+    I & A & B & S & R <--> M
     B -- seed in / report out --> MF
     MF -. OpenAI SDK same .env .-> G
     MF <--> Z
@@ -57,31 +62,71 @@ flowchart TD
    scrape in one) and `/scrape` for specific competitor pages. Needs `FIRECRAWL_API_KEY`
    (free tier ~limited credits — cache aggressively, don't re-scrape during the demo).
 3. **MongoDB Atlas (free M0)** — one database, collections: `decisions`, `intake_context`,
-   `agent_findings`, `simulations`, `verdicts`. Stores the full audit trail per run.
+   `rag_chunks` (+ optional Vector Search index), `agent_findings` (VULNERABILITY/SEVERITY/ATTACK/
+   QUESTION), `simulations`, `verdicts`. Stores the full audit trail per run.
 
 ## Pipeline data flow
 
-1. **Upload** → orchestrator parses PDF/DOCX → text.
-2. **Intake (Gemini)** → extract the core decision + stated company beliefs → generate 3–5
-   adaptive follow-up questions (MCQ/text) → user answers → persist a `DecisionContext` object.
-   *This object is the shared seed for everything downstream.*
-3. **Adversarial agents (Gemini, parallel)** → CFO / Market / Competitor / Legal / Execution.
-   Market + Competitor agents call Firecrawl for live evidence. Each returns scored findings.
-4. **Simulation bridge** → compose a MiroFish *seed* (the decision + market context + key
-   findings) → trigger MiroFish → retrieve its prediction report (bull/base/bear + opinion dynamics).
-5. **Synthesis (Gemini)** → fuse findings + simulation → verdict (Proceed/Caution/Do Not Proceed)
-   + the 3 questions + an India-specific GTM strategy.
-6. **Dashboard** renders all four stages; the MiroFish digital world is embedded/linked.
+1. **Upload** → orchestrator parses PDF/DOCX → text → **chunks + domain-tags into the RAG
+   `decision` layer**; connector/company docs go into the `internal` layer.
+2. **Intake (LLM)** → extract the core decision + stated beliefs → generate 3–5 adaptive
+   follow-up questions (MCQ/text) → user answers → persist a `DecisionContext`. *This object is
+   the shared seed for everything downstream.*
+3. **Adversarial agents (LLM, parallel via asyncio)** → CFO / Market / Competitor / Legal /
+   Execution. Each agent grounds itself by retrieving from **both RAG layers**
+   (`get_agent_context`) so it quotes the actual document; Market + Competitor additionally call
+   **Firecrawl** for live external evidence. Each emits structured findings in `VULNERABILITY /
+   SEVERITY / ATTACK / QUESTION` form, **streamed to the UI over SSE** as each agent finishes.
+4. **Severity scoring** → deterministic 0–100 Risk Score (weights + cross-agent convergence
+   bonuses) → verdict band.
+5. **Simulation bridge** → compose a MiroFish *seed* (decision + market context + key findings) →
+   trigger MiroFish → retrieve its prediction report (bull/base/bear + opinion dynamics).
+6. **Synthesis (LLM)** → fuse findings + simulation into a JSON report (verdict, the 3 questions,
+   India-specific GTM, **remediation roadmap**). Has a deterministic fallback that rebuilds the
+   report from the severity score if JSON parsing fails.
+7. **Dashboard** → live agent panel (SSE: waiting→thinking→complete), findings with severity
+   badges, the remediation roadmap, MiroFish outcome bands, and the verdict banner.
 
-## MiroFish integration — three options (pick by risk appetite)
+## Reference patterns adopted from the Red Team repo
 
-| Option | How | Risk | Recommendation |
+Lifted from `galatro/hackaton-ai-week-2026` and adapted to this stack — full drop-in code in
+`INSPIRATIONS.md`. The reference team defined a Google ADK agent graph but **never ran it** at
+runtime; they hand-rolled an asyncio fan-out. We do the same — **no orchestration framework**.
+
+- **Two-layer RAG with keyword fallback.** `decision` layer (uploaded doc) + `internal` layer
+  (connector/company docs). Chunk (~512 tokens, 64 overlap), domain-tag, retrieve from both, merge
+  + dedupe. Primary store: **MongoDB Atlas Vector Search**; fallback: in-memory keyword-overlap
+  search (enough for the demo, zero infra). RAG is foundational — build it before the agents.
+- **Structured findings + regex parse.** Agents emit `VULNERABILITY/SEVERITY/ATTACK/QUESTION`
+  blocks; a regex extracts them (or use OpenAI structured output, with regex as the fallback).
+- **Deterministic severity scoring.** `CRITICAL 30 / HIGH 15 / MEDIUM 5`, `+10` if ≥2 agents flag
+  CRITICAL, `+5` if ≥3 flag HIGH, capped at 100. Verdict: ≥80 DO NOT PROCEED · 50–79 CAUTION ·
+  <50 PROCEED.
+- **SSE streaming on both ends.** Backend `StreamingResponse(media_type="text/event-stream")`
+  emits `ingesting → agent_start → agent_complete(progress) → synthesizing → complete`. Frontend
+  uses **fetch + ReadableStream** (not `EventSource`, which can't POST FormData).
+- **Remediation Roadmap.** Each top finding maps to a recommended action per agent, rolling up
+  into the GTM plan — the bridge from "what's broken" to "what to do."
+- **Deterministic fallbacks everywhere.** RAG → keyword search; demo → hardcoded context string;
+  synthesis → computed report. The demo never breaks on stage.
+
+## MiroFish integration — now mapped (see `MIROFISH_INTEGRATION.md`)
+
+MiroFish is a **Flask REST API on `:5001`** (blueprints `/api/graph`, `/api/simulation`,
+`/api/report`, CORS open). Its LLM layer is the **OpenAI SDK** driven by `LLM_API_KEY/BASE_URL/
+MODEL_NAME` — point it at the same Gemini env. **There is no one-shot endpoint:** one prediction is
+a **7-step async pipeline** (ontology/seed → build graph → create sim → prepare → start → generate
+report → fetch), each step polled. Required keys: `LLM_API_KEY` + `ZEP_API_KEY`.
+
+| Mode | How | Risk | Recommendation |
 |---|---|---|---|
-| **A. API call** | Orchestrator POSTs seed to MiroFish backend (:5001), polls for report JSON, ingests into dashboard | Medium — API surface is undocumented; inspect `backend/` for the route | Do this *if* you find a clean endpoint early |
-| **B. Sidecar + embed** | Run MiroFish standalone; pre-run the demo scenario; embed/iframe its world UI + paste its report into your dashboard | Low | **Default for a 2-person team** |
-| **C. Output-only** | Pre-run once, export report, render in your own UI; never call MiroFish live | Lowest | Fallback if A and B both slip |
+| **B. Sidecar + bridge + embed** | Run MiroFish as-is; a thin `requests` bridge drives the 7 steps; show results by iframing its `:3000` world or rendering the fetched report JSON | Low | **Default for a 2-person team** |
+| **A. Full programmatic** | Same bridge, render everything in your own dashboard; don't run their Vue | Medium | Only with spare time for polish |
+| **C. Output-only** | Pre-run once (UI or `scripts/run_parallel_simulation.py`), cache report JSON, never call live | Lowest | Fallback if the live run is flaky |
 
-Start on B, attempt A only if the backend exposes an obvious trigger/report route.
+Build Mode B's bridge but **pre-run the demo scenario and cache the report JSON** — the live demo
+reads the cache, with a recording as the ultimate fallback. Full endpoint sequence, bridge skeleton,
+and cost caps are in `MIROFISH_INTEGRATION.md`.
 
 ## Ports & process layout (avoid collisions)
 
