@@ -125,6 +125,13 @@ export default function AgentsPage() {
     setEventLog(prev => [...prev.slice(-49), { ...entry, id: Date.now() + Math.random() }])
   }, [])
 
+  // Persist event log to localStorage so it survives navigation and shows in history view
+  useEffect(() => {
+    if (decisionId && eventLog.length > 0) {
+      try { localStorage.setItem(`foresight_events_${decisionId}`, JSON.stringify(eventLog)) } catch {}
+    }
+  }, [decisionId, eventLog])
+
   const updateAgent = useCallback((name, patch) => {
     setAgents(prev => ({ ...prev, [name]: { ...prev[name], ...patch } }))
   }, [])
@@ -183,6 +190,12 @@ export default function AgentsPage() {
     })
 
     fetchReports(id)
+
+    // Restore event log saved during the live run
+    try {
+      const saved = JSON.parse(localStorage.getItem(`foresight_events_${id}`) || 'null')
+      if (saved?.length) setEventLog(saved)
+    } catch {}
   }, [fetchReports])
 
   // Load from URL param on mount
