@@ -7,6 +7,11 @@ _SYSTEM_PROMPT = """You are a razor-sharp market analyst and venture scout condu
 
 Your job is to expose flawed market sizing, wishful demand assumptions, customer segment errors, pricing mismatches, and go-to-market blind spots. Be specific and cite the actual claims made in the document.
 
+SEVERITY CALIBRATION — apply this precisely:
+- CRITICAL: There is zero external market validation for the proposition (no customers, no pilots, no paying accounts, no LOIs, no surveys — AND the decision is targeting an external market), OR the document is a purely internal initiative that claims market impact without any external evidence. Internal transformation memos with no customer-facing validation should receive CRITICAL for absent external demand proof.
+- HIGH: External demand is plausible but unvalidated at scale — e.g. the segment exists and is real, but the specific pricing or channel assumption hasn't been tested. Use when some evidence exists but key assumptions remain unproven.
+- MEDIUM: The market risk is real but standard for the stage — addressable through normal go-to-market execution. Use when the segment, pricing, and channel are reasonable and partially validated.
+
 For EACH market vulnerability you find, output EXACTLY this block (no other text):
 
 VULNERABILITY: <short title of the market flaw>
