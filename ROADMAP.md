@@ -190,13 +190,14 @@ return a cached/stub report so the rest of the pipeline is never blocked.**"
 **STOP / verify:** Tester gets a real MiroFish report tied to a decision_id; killing MiroFish still
 yields a valid stub so synthesis proceeds.
 
-### T4.3 — Pre-run demo scenario + outcome viz
-**Prompt:** "Pre-run the demo scenario and cache the report so the live demo never waits on a
-fresh simulation. Build the Dashboard 'Future' section: bull/base/bear bands + a link/iframe to
-the MiroFish world."
-**STOP / verify:** Tester loads cached outcome bands instantly; MiroFish world opens.
+### T4.3 — Pre-run demo scenario + outcome viz ✅ (partial)
+**What was built:** Swarm simulation progress bar streams live MiroFish phases over SSE
+(`sim_progress` events); 3 downloadable reports (agents, swarm, GTM) added to dashboard.
+MiroFish live simulation view opens in a new tab on `sim_started` event (not iframed, as the
+Zep Cloud free tier's episode limit blocks fresh knowledge graph builds during demo).
+**Status:** live simulation bridge works; fully cached pre-run not formalized.
 
-**Phase 4 gate:** a decision flows into MiroFish and a prediction comes back into the dashboard.
+**Phase 4 gate:** a decision flows into MiroFish and a prediction comes back into the dashboard. ✅
 
 ---
 
@@ -226,32 +227,59 @@ GTM → **Remediation Roadmap** (SVG flow: top findings → a remediation action
 INSPIRATIONS.md §8), as one scrollable narrative with a prominent verdict banner."
 **STOP / verify:** Tester walks the whole dashboard top to bottom; it tells one clear story.
 
-**Phase 5 gate:** one click → full pipeline runs end to end and renders in the browser.
+**Phase 5 gate:** one click → full pipeline runs end to end and renders in the browser. ✅
 
 ---
 
 ## Phase 6 — Mock screens, demo polish, submission
 
-### T6.1 — Mock landing / auth / connectors
-**Prompt:** "Build polished static Landing, Sign-up (mock), and a Connectors page modeled as
-'data sources as context' (Notion/GDrive/Salesforce/Slack/Jira toggles with connected/docsCount
-state; copy: 'Connected sources are automatically included as context in every analysis').
-Connected toggles feed the RAG `internal` layer with a hardcoded dataset. No real auth — make it
-look production-ready (INSPIRATIONS.md §9-10)."
-**STOP / verify:** Tester clicks through; screens look credible for a demo.
+### T6.1 — Mock landing / auth / connectors ✅
+**What was built:** Animated `LandingPage` (hero + animated agent icons, features grid, CTA),
+`PluginsPage` (connector toggles for Salesforce/Notion/GDrive/Slack/Jira with connected state
+and doc-count badges), `HistoryPage` (mock analysis history list). All look production-ready.
 
 ### T6.2 — Demo dry-run + seed data + fallback
-**Prompt:** "Wire a one-click `demo_mode`: a recognizable Indian cautionary-tale 'plan' preloaded,
-running the full pipeline against cached MiroFish output, with a triple fallback (RAG → in-memory →
-hardcoded context string, INSPIRATIONS.md §5) so it never breaks live. Add a 'reset demo' button."
-**STOP / verify:** Tester runs the 90-second demo 3× cleanly. **Record a fallback screen capture.**
+**Status:** End-to-end pipeline reliable for a fresh upload. Fully automated "demo mode" button
+(pre-seeded Indian case, one-click) not implemented — user uploads their own doc + answers intake
+questions. Triple fallback (RAG → keyword → hardcoded) is in place.
 
-### T6.3 — Submission assets
-**Prompt:** "Write the README (problem, architecture diagram, stack, partner-tech usage for
-Gemini — default LLM provider via OpenAI SDK — + MongoDB prizes, setup steps) and a short demo script."
-**STOP / verify:** Tester follows the README from scratch on the other laptop; it works.
+### T6.3 — Submission assets ✅
+**What was built:** `README.md` at repo root — problem statement, architecture diagram, full API
+reference, quick-start instructions, tech stack, environment variable reference, project structure.
 
 **Final gate:** demo runs reliably + submission complete before the 3:30 PM Jun 14 window closes.
+
+---
+
+## Extra deliverables (beyond original plan)
+
+These features were added after the core plan was complete:
+
+### EX1 — Knowledge Base page ✅
+Full `/knowledge-base` page: drag-and-drop upload (PDF/DOCX), extracted text stored in MongoDB
+`knowledge_docs` collection (not the file), list view with 3 actions per doc:
+- **Download** — exports extracted text as `.md` file
+- **View** — full-screen popup with ESC-to-close + inline export button
+- **Delete** — confirmation modal before removal
+Backend: `POST /knowledge/upload`, `GET /knowledge/`, `GET /knowledge/{id}/content`,
+`DELETE /knowledge/{id}`. Uploaded docs are chunked into the `internal` RAG layer automatically.
+
+### EX2 — Live agent side panel (4 features) ✅
+Right-side sticky panel on the AgentsPage analysis view, inspired by MiroFish's simulation UI:
+
+1. **Agent status cards** — per-agent card with pulsing status dot, finding count, top severity
+   badge, 2-line finding preview, animated bar when actively thinking
+2. **Live event timeline feed** — real-time event log (capped at 50 entries) with typed entries
+   per SSE event (agent_start, agent_complete, scoring, simulating, etc.) + HH:MM:SS timestamps
+3. **D3 findings graph** — force-directed graph linking agent nodes → finding nodes, colored by
+   severity, with zoom/pan/drag; renders as each agent completes
+4. **RAG knowledge graph** — D3 force graph showing domain clusters (colored by domain) linked
+   to source document nodes, weighted by chunk count; fetched from `GET /rag/graph/{decision_id}`
+
+### EX3 — RAG graph API endpoint ✅
+`GET /rag/graph/{decision_id}` — aggregates in-memory RAG chunks for a decision, groups by
+source document → domain, returns nodes (domain + source kinds with colors and chunk counts)
+and weighted links. Powers the KnowledgeGraph D3 component in the side panel.
 
 ---
 
