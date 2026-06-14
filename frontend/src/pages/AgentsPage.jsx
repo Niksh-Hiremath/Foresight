@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+﻿import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import * as d3 from 'd3'
 import Sidebar from '../components/Sidebar'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -115,9 +116,14 @@ export default function AgentsPage() {
   const [intakeData, setIntakeData] = useState(null)
   const [reports, setReports] = useState({ agentsReport: '', swarmReport: '', gtmReport: '' })
   const [runError, setRunError] = useState('')
+  const [eventLog, setEventLog] = useState([])
 
   const fileInputRef = useRef(null)
   const abortRef = useRef(null)
+
+  const pushEvent = useCallback((entry) => {
+    setEventLog(prev => [...prev.slice(-49), { ...entry, id: Date.now() + Math.random() }])
+  }, [])
 
   const updateAgent = useCallback((name, patch) => {
     setAgents(prev => ({ ...prev, [name]: { ...prev[name], ...patch } }))
@@ -268,6 +274,7 @@ export default function AgentsPage() {
     setSimProgress({ phase: '', pct: 0 })
     setReports({ agentsReport: '', swarmReport: '', gtmReport: '' })
     setStep('running')
+    setEventLog([])
 
     saveSession(id, filename)
 
@@ -308,26 +315,32 @@ export default function AgentsPage() {
     }
 
     function handleEvent(ev) {
+      const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       switch (ev.event) {
         case 'agent_start':
           updateAgent(ev.agent, { status: 'thinking' })
           setPipelineStage('agents')
+          pushEvent({ type: 'agent_start', agent: ev.agent, ts })
           break
         case 'agent_complete':
           updateAgent(ev.agent, { status: 'complete', findings: ev.findings || [] })
           setProgress(ev.progress || 0)
+          pushEvent({ type: 'agent_complete', agent: ev.agent, count: (ev.findings || []).length, ts })
           break
         case 'agent_error':
           updateAgent(ev.agent, { status: 'error', errorMsg: ev.error || 'Unknown error' })
+          pushEvent({ type: 'agent_error', agent: ev.agent, ts })
           break
         case 'scoring':
           setPipelineStage('scoring')
           setProgress(ev.progress || 90)
           setScoreData(ev)
+          pushEvent({ type: 'scoring', score: ev.risk_score, verdict: ev.verdict, ts })
           break
         case 'simulating':
           setPipelineStage('simulating')
           setProgress(ev.progress || 93)
+          pushEvent({ type: 'simulating', ts })
           break
         case 'sim_progress':
           setPipelineStage('simulating')
@@ -336,10 +349,12 @@ export default function AgentsPage() {
         case 'gtm_start':
           setPipelineStage('gtm')
           setProgress(ev.progress || 94)
+          pushEvent({ type: 'gtm_start', ts })
           break
         case 'synthesizing':
           setPipelineStage('synthesizing')
           setProgress(ev.progress || 97)
+          pushEvent({ type: 'synthesizing', ts })
           break
         case 'complete':
           setProgress(100)
@@ -347,10 +362,11 @@ export default function AgentsPage() {
           if (ev.score) setScoreData(ev.score)
           if (ev.report) setSynthesisData(ev.report)
           if (ev.reports_ready) fetchReports(id)
+          pushEvent({ type: 'complete', ts })
           break
       }
     }
-  }, [decisionId, filename, updateAgent, fetchReports])
+  }, [decisionId, filename, updateAgent, fetchReports, pushEvent])
 
   const cancelRun = () => {
     abortRef.current?.abort()
@@ -513,8 +529,11 @@ export default function AgentsPage() {
               )}
             </div>
 
-            {/* Results sections */}
-            <div className="p-8 flex flex-col gap-8">
+            {/* Two-column layout: results + agent side panel */}
+            <div className="flex">
+
+            {/* Left: Results sections */}
+            <div className="flex-1 min-w-0 p-8 flex flex-col gap-8">
               {/* Swarm progress during simulation */}
               {running && pipelineStage === 'simulating' && simProgress.phase && (
                 <div className="bg-surface-container border border-outline-variant p-4 rounded">
@@ -623,6 +642,25 @@ export default function AgentsPage() {
                 </DashSectionDownload>
               )}
             </div>
+
+            {/* Right: Agent status panel */}
+            <aside className="w-72 shrink-0 border-l border-outline-variant bg-surface-container-lowest/30">
+              <div className="sticky top-0 overflow-y-auto" style={{ maxHeight: '100vh', paddingTop: '112px' }}>
+                <div className="px-4 pb-6 flex flex-col gap-3">
+                  <AgentSidePanel
+                    agents={agents}
+                    pipelineStage={pipelineStage}
+                    running={running}
+                    simProgress={simProgress}
+                    step={step}
+                    eventLog={eventLog}
+                    decisionId={decisionId}
+                  />
+                </div>
+              </div>
+            </aside>
+
+            </div>{/* end two-column */}
           </div>
         )}
       </main>
@@ -1272,6 +1310,457 @@ function ReportDoc({ content }) {
           <div key={i}>{renderBold(line) || ' '}</div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/* ── Agent Side Panel ───────────────────────────────────────────────── */
+
+const STATUS_COLOR = {
+  waiting:  '#5b403d',
+  thinking: '#ff544c',
+  complete: '#10b981',
+  error:    '#ef4444',
+}
+const STATUS_LABEL = {
+  waiting:  'STANDBY',
+  thinking: 'ACTIVE',
+  complete: 'DONE',
+  error:    'ERROR',
+}
+
+function AgentSideCard({ name, state }) {
+  const meta = AGENT_META[name]
+  const findings = state.findings || []
+  const topFinding = findings.length
+    ? [...findings].sort((a, b) => (SEV_RANK[a.severity] ?? 3) - (SEV_RANK[b.severity] ?? 3))[0]
+    : null
+  const topSev = topFinding?.severity
+  const sc = SEV_CONFIG[topSev]
+
+  const sColor = STATUS_COLOR[state.status] || STATUS_COLOR.waiting
+  const sLabel = STATUS_LABEL[state.status] || 'STANDBY'
+
+  const cardBorder =
+    state.status === 'thinking' ? 'border-primary-container/60' :
+    state.status === 'complete' ? 'border-emerald-800/60' :
+    state.status === 'error'    ? 'border-red-800/60' :
+    'border-outline-variant/40'
+
+  const cardBg =
+    state.status === 'thinking' ? 'bg-primary-container/5' :
+    state.status === 'complete' ? 'bg-emerald-950/20' :
+    state.status === 'error'    ? 'bg-red-950/20' :
+    'bg-surface-container-low/50'
+
+  return (
+    <div className={`p-3 rounded border transition-all duration-500 ${cardBorder} ${cardBg}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm" style={{ color: sColor }}>{meta.icon}</span>
+          <span className="text-[10px] text-on-surface uppercase tracking-widest" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+            {meta.label.replace(' Agent', '')}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${state.status === 'thinking' ? 'animate-pulse' : ''}`}
+            style={{ backgroundColor: sColor }}
+          />
+          <span className="text-[9px] uppercase tracking-wider" style={{ fontFamily: 'JetBrains Mono, monospace', color: sColor }}>
+            {sLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-on-surface-variant" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          {findings.length > 0 ? `${findings.length} finding${findings.length !== 1 ? 's' : ''}` : '—'}
+        </span>
+        {topSev && sc && (
+          <span
+            className="text-[9px] px-1.5 py-0.5 rounded"
+            style={{ fontFamily: 'JetBrains Mono, monospace', color: sc.color, background: sc.bg, border: `1px solid ${sc.border}` }}
+          >
+            {topSev}
+          </span>
+        )}
+      </div>
+
+      {topFinding && (
+        <p className="text-[9px] text-on-surface/50 mt-1.5 leading-snug" style={{
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+        }}>
+          {topFinding.vulnerability}
+        </p>
+      )}
+
+      {state.status === 'thinking' && (
+        <div className="mt-2 h-0.5 bg-surface-container-highest rounded-full overflow-hidden">
+          <div className="h-full bg-primary-container rounded-full animate-pulse" style={{ width: '60%' }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+const EVENT_META = {
+  agent_start:    { icon: 'play_circle',    color: '#ff544c', label: (e) => `${AGENT_META[e.agent]?.label || e.agent} started` },
+  agent_complete: { icon: 'check_circle',   color: '#10b981', label: (e) => `${AGENT_META[e.agent]?.label || e.agent} — ${e.count} finding${e.count !== 1 ? 's' : ''}` },
+  agent_error:    { icon: 'error',          color: '#ef4444', label: (e) => `${AGENT_META[e.agent]?.label || e.agent} errored` },
+  scoring:        { icon: 'analytics',      color: '#60a5fa', label: (e) => `Risk scored: ${e.score}/100` },
+  simulating:     { icon: 'groups',         color: '#a78bfa', label: () => 'Swarm simulation started' },
+  gtm_start:      { icon: 'rocket_launch',  color: '#f97316', label: () => 'GTM generation started' },
+  synthesizing:   { icon: 'auto_awesome',   color: '#e879f9', label: () => 'Synthesizing report' },
+  complete:       { icon: 'verified',       color: '#10b981', label: () => 'Analysis complete' },
+}
+
+function EventFeedItem({ entry }) {
+  const meta = EVENT_META[entry.type] || { icon: 'info', color: '#5b403d', label: () => entry.type }
+  return (
+    <div className="flex items-start gap-2 py-1.5 border-b border-outline-variant/20 last:border-0">
+      <span className="material-symbols-outlined text-xs mt-0.5 shrink-0" style={{ color: meta.color, fontSize: '13px' }}>{meta.icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[9px] text-on-surface/80 leading-snug" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          {meta.label(entry)}
+        </p>
+        <p className="text-[8px] text-on-surface-variant/50 mt-0.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          {entry.ts}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function AgentSidePanel({ agents, pipelineStage, running, simProgress, step, eventLog, decisionId }) {
+  const completedCount = ALL_AGENTS.filter(n => agents[n]?.status === 'complete').length
+  const totalFindings  = ALL_AGENTS.reduce((acc, n) => acc + (agents[n]?.findings?.length || 0), 0)
+  const feedRef = useRef(null)
+
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight
+  }, [eventLog])
+
+  return (
+    <>
+      {/* ── Agent Cards Section ── */}
+      <div className="flex items-center justify-between pb-2 border-b border-outline-variant/40">
+        <span className="text-[10px] text-on-surface-variant uppercase tracking-widest" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          LIVE AGENTS
+        </span>
+        <span className="text-[10px] text-primary-container" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          {completedCount}/{ALL_AGENTS.length}
+        </span>
+      </div>
+
+      {ALL_AGENTS.map(name => (
+        <AgentSideCard key={name} name={name} state={agents[name]} />
+      ))}
+
+      {completedCount > 0 && (
+        <div className="p-2.5 rounded border border-outline-variant/30 bg-surface-container-lowest/50">
+          <div className="flex justify-between text-[10px] text-on-surface-variant" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+            <span>TOTAL FINDINGS</span>
+            <span className="text-on-surface">{totalFindings}</span>
+          </div>
+        </div>
+      )}
+
+      {running && pipelineStage === 'simulating' && simProgress.pct > 0 && (
+        <div className="p-2.5 rounded border border-outline-variant/30 bg-surface-container-lowest/50">
+          <div className="flex justify-between text-[9px] text-on-surface-variant mb-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+            <span>SWARM SIM</span>
+            <span className="text-primary-container">{simProgress.pct}%</span>
+          </div>
+          <div className="h-0.5 bg-surface-container-highest rounded overflow-hidden">
+            <div className="h-full bg-primary-container rounded transition-all duration-500" style={{ width: `${simProgress.pct}%` }} />
+          </div>
+          {simProgress.phase && (
+            <p className="text-[9px] text-on-surface-variant/60 mt-1 truncate" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+              {simProgress.phase}
+            </p>
+          )}
+        </div>
+      )}
+
+      {pipelineStage && (
+        <div className="flex items-center gap-2">
+          {running && <div className="thinking-dots shrink-0"><span /><span /><span /></div>}
+          <span className="text-[9px] text-on-surface-variant uppercase tracking-widest truncate" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+            {pipelineStage.replace('_', ' ')}
+          </span>
+        </div>
+      )}
+
+      {/* ── Event Feed Section ── */}
+      {eventLog.length > 0 && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-on-surface-variant uppercase tracking-widest" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+              EVENT LOG
+            </span>
+            <span className="text-[9px] text-on-surface-variant/50" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+              {eventLog.length}
+            </span>
+          </div>
+          <div
+            ref={feedRef}
+            className="bg-surface-container-lowest border border-outline-variant/30 rounded px-2 py-1 overflow-y-auto"
+            style={{ maxHeight: '220px' }}
+          >
+            {eventLog.map(entry => (
+              <EventFeedItem key={entry.id} entry={entry} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Findings Graph ── */}
+      {ALL_AGENTS.some(n => (agents[n]?.findings?.length || 0) > 0) && (
+        <FindingsGraph agents={agents} />
+      )}
+
+      {/* ── Knowledge Graph ── */}
+      {step === 'done' && <KnowledgeGraph decisionId={decisionId} />}
+    </>
+  )
+}
+
+/* ── Findings Graph (D3 force) ──────────────────────────────────────── */
+
+const SEV_NODE_COLOR = { CRITICAL: '#ef4444', HIGH: '#f97316', MEDIUM: '#eab308' }
+const AGENT_NODE_COLOR = '#ff544c'
+
+function FindingsGraph({ agents }) {
+  const svgRef = useRef(null)
+  const W = 256
+  const H = 220
+
+  useEffect(() => {
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    // Build nodes and links from agent findings
+    const nodes = []
+    const links = []
+
+    // Agent nodes (center cluster)
+    ALL_AGENTS.forEach(name => {
+      nodes.push({ id: `agent_${name}`, label: AGENT_META[name].label.replace(' Agent', ''), kind: 'agent' })
+    })
+
+    // Finding nodes
+    ALL_AGENTS.forEach(name => {
+      const findings = agents[name]?.findings || []
+      findings.forEach((f, i) => {
+        const nid = `finding_${name}_${i}`
+        nodes.push({ id: nid, label: f.vulnerability?.slice(0, 28) || '?', kind: 'finding', sev: f.severity })
+        links.push({ source: `agent_${name}`, target: nid })
+      })
+    })
+
+    if (nodes.length === 0) return
+
+    const sim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(40).strength(0.8))
+      .force('charge', d3.forceManyBody().strength(-60))
+      .force('center', d3.forceCenter(W / 2, H / 2))
+      .force('collide', d3.forceCollide(14))
+      .alphaDecay(0.04)
+
+    const g = svg.append('g')
+
+    // Zoom
+    svg.call(d3.zoom().scaleExtent([0.4, 3]).on('zoom', e => g.attr('transform', e.transform)))
+
+    // Links
+    const link = g.append('g')
+      .selectAll('line')
+      .data(links)
+      .join('line')
+      .attr('stroke', '#5b403d')
+      .attr('stroke-width', 1)
+      .attr('stroke-opacity', 0.5)
+
+    // Nodes
+    const node = g.append('g')
+      .selectAll('circle')
+      .data(nodes)
+      .join('circle')
+      .attr('r', d => d.kind === 'agent' ? 9 : 5)
+      .attr('fill', d => d.kind === 'agent' ? AGENT_NODE_COLOR : (SEV_NODE_COLOR[d.sev] || '#60a5fa'))
+      .attr('fill-opacity', d => d.kind === 'agent' ? 1 : 0.8)
+      .attr('stroke', '#0e0e0e')
+      .attr('stroke-width', 1)
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+        .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
+        .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y })
+        .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null })
+      )
+
+    // Labels (agent nodes only)
+    const label = g.append('g')
+      .selectAll('text')
+      .data(nodes.filter(d => d.kind === 'agent'))
+      .join('text')
+      .attr('font-size', 7)
+      .attr('fill', '#e5e2e1')
+      .attr('text-anchor', 'middle')
+      .attr('dy', 18)
+      .style('pointer-events', 'none')
+      .style('font-family', 'JetBrains Mono, monospace')
+      .text(d => d.label.toUpperCase())
+
+    // Tooltip on finding nodes
+    node.filter(d => d.kind === 'finding')
+      .append('title')
+      .text(d => `[${d.sev}] ${d.label}`)
+
+    sim.on('tick', () => {
+      link
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y)
+      node
+        .attr('cx', d => Math.max(10, Math.min(W - 10, d.x)))
+        .attr('cy', d => Math.max(10, Math.min(H - 10, d.y)))
+      label
+        .attr('x', d => Math.max(10, Math.min(W - 10, d.x)))
+        .attr('y', d => Math.max(10, Math.min(H - 10, d.y)))
+    })
+
+    return () => sim.stop()
+  }, [agents])
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] text-on-surface-variant uppercase tracking-widest" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          FINDINGS GRAPH
+        </span>
+        <div className="flex items-center gap-3 text-[8px] text-on-surface-variant/60" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ background: AGENT_NODE_COLOR }} />agent</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-red-500" />critical</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block bg-orange-500" />high</span>
+        </div>
+      </div>
+      <div className="bg-surface-container-lowest border border-outline-variant/30 rounded overflow-hidden">
+        <svg ref={svgRef} width={W} height={H} />
+      </div>
+      <p className="text-[8px] text-on-surface-variant/40 mt-1 text-center" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+        scroll to zoom · drag to pan · drag nodes
+      </p>
+    </div>
+  )
+}
+
+/* ── Knowledge Graph (RAG chunks → domain clusters) ─────────────────── */
+
+function KnowledgeGraph({ decisionId }) {
+  const svgRef = useRef(null)
+  const [graphData, setGraphData] = useState(null)
+  const W = 256
+  const H = 200
+
+  useEffect(() => {
+    if (!decisionId) return
+    fetch(`${API}/rag/graph/${decisionId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.nodes?.length) setGraphData(d) })
+      .catch(() => {})
+  }, [decisionId])
+
+  useEffect(() => {
+    if (!graphData || !svgRef.current) return
+    const { nodes, links } = graphData
+
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    const nodesCopy = nodes.map(d => ({ ...d }))
+    const linksCopy = links.map(l => ({ ...l }))
+
+    const sim = d3.forceSimulation(nodesCopy)
+      .force('link', d3.forceLink(linksCopy).id(d => d.id).distance(55).strength(0.6))
+      .force('charge', d3.forceManyBody().strength(-80))
+      .force('center', d3.forceCenter(W / 2, H / 2))
+      .force('collide', d3.forceCollide(18))
+      .alphaDecay(0.04)
+
+    const g = svg.append('g')
+    svg.call(d3.zoom().scaleExtent([0.3, 4]).on('zoom', e => g.attr('transform', e.transform)))
+
+    g.append('g').selectAll('line')
+      .data(linksCopy)
+      .join('line')
+      .attr('stroke', '#5b403d')
+      .attr('stroke-width', d => Math.min(3, 1 + (d.weight || 1) / 3))
+      .attr('stroke-opacity', 0.5)
+
+    const nodeG = g.append('g').selectAll('circle')
+      .data(nodesCopy)
+      .join('circle')
+      .attr('r', d => d.kind === 'domain' ? 11 : 7)
+      .attr('fill', d => d.color || '#9ca3af')
+      .attr('fill-opacity', d => d.kind === 'domain' ? 1 : 0.7)
+      .attr('stroke', '#0e0e0e')
+      .attr('stroke-width', 1)
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+        .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
+        .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y })
+        .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null })
+      )
+
+    nodeG.append('title').text(d => `${d.label} (${d.count} chunks)`)
+
+    const labelG = g.append('g').selectAll('text')
+      .data(nodesCopy)
+      .join('text')
+      .attr('font-size', d => d.kind === 'domain' ? 7 : 6)
+      .attr('fill', d => d.kind === 'domain' ? d.color : '#9ca3af')
+      .attr('text-anchor', 'middle')
+      .attr('dy', d => d.kind === 'domain' ? 20 : -10)
+      .style('pointer-events', 'none')
+      .style('font-family', 'JetBrains Mono, monospace')
+      .text(d => d.label.slice(0, 12))
+
+    const link = g.selectAll('line')
+    sim.on('tick', () => {
+      link
+        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y)
+      nodeG
+        .attr('cx', d => Math.max(12, Math.min(W - 12, d.x)))
+        .attr('cy', d => Math.max(12, Math.min(H - 12, d.y)))
+      labelG
+        .attr('x', d => Math.max(12, Math.min(W - 12, d.x)))
+        .attr('y', d => Math.max(12, Math.min(H - 12, d.y)))
+    })
+
+    return () => sim.stop()
+  }, [graphData])
+
+  if (!graphData) return null
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] text-on-surface-variant uppercase tracking-widest" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          KNOWLEDGE GRAPH
+        </span>
+        <span className="text-[9px] text-on-surface-variant/50" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          {graphData.nodes.length} nodes
+        </span>
+      </div>
+      <div className="bg-surface-container-lowest border border-outline-variant/30 rounded overflow-hidden">
+        <svg ref={svgRef} width={W} height={H} />
+      </div>
+      <p className="text-[8px] text-on-surface-variant/40 mt-1 text-center" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+        domains · sources · scroll to zoom
+      </p>
     </div>
   )
 }
