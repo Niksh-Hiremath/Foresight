@@ -53,7 +53,15 @@ export default function HistoryPage() {
 
   const openSession = (id) => navigate(`/agents?decision_id=${id}`)
 
+  const deleteSession = (id) => {
+    const updated = sessions.filter(s => s.id !== id)
+    setSessions(updated)
+    localStorage.setItem('foresight_sessions', JSON.stringify(updated))
+    localStorage.removeItem(`foresight_events_${id}`)
+  }
+
   const clearHistory = () => {
+    sessions.forEach(s => localStorage.removeItem(`foresight_events_${s.id}`))
     localStorage.removeItem('foresight_sessions')
     setSessions([])
   }
@@ -103,7 +111,7 @@ export default function HistoryPage() {
         ) : sessions.length === 0 ? (
           <EmptyState />
         ) : (
-          <SessionTable sessions={sessions} onOpen={openSession} />
+          <SessionTable sessions={sessions} onOpen={openSession} onDelete={deleteSession} />
         )}
       </main>
     </div>
@@ -136,7 +144,7 @@ function EmptyState() {
   )
 }
 
-function SessionTable({ sessions, onOpen }) {
+function SessionTable({ sessions, onOpen, onDelete }) {
   return (
     <section className="bg-surface-container border border-outline-variant flex flex-col">
       {/* Column headers */}
@@ -145,7 +153,7 @@ function SessionTable({ sessions, onOpen }) {
         <div className="col-span-2">DATE</div>
         <div className="col-span-3">VERDICT</div>
         <div className="col-span-2">RISK SCORE</div>
-        <div className="col-span-1 text-right">ACTION</div>
+        <div className="col-span-1 text-right">ACTIONS</div>
       </div>
 
       <div className="flex flex-col overflow-y-auto">
@@ -207,10 +215,21 @@ function SessionTable({ sessions, onOpen }) {
                 )}
               </div>
 
-              {/* Action */}
-              <div className="col-span-1 text-right">
-                <button className="text-on-surface-variant hover:text-primary-container transition-colors">
+              {/* Actions */}
+              <div className="col-span-1 flex items-center justify-end gap-2">
+                <button
+                  onClick={e => { e.stopPropagation(); onOpen(s.id) }}
+                  className="text-on-surface-variant hover:text-primary-container transition-colors"
+                  title="Open"
+                >
                   <span className="material-symbols-outlined text-base">open_in_new</span>
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); onDelete(s.id) }}
+                  className="text-on-surface-variant hover:text-error transition-colors"
+                  title="Delete"
+                >
+                  <span className="material-symbols-outlined text-base">delete</span>
                 </button>
               </div>
             </div>
