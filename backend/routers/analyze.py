@@ -26,7 +26,7 @@ from services.agents.competitor_agent import run_competitor_agent
 from services.agents.legal_agent import run_legal_agent
 from services.agents.execution_agent import run_execution_agent
 from services.firecrawl_service import get_market_grounding, get_competitor_grounding
-from services.mirofish_bridge import run_simulation
+from services.mirofish_bridge import run_simulation, translate_sim_result
 from services.seed_composer import compose_seed_for_decision
 from services.agents_report import compile_agents_report
 from services.gtm_agent import run_gtm_agent
@@ -182,6 +182,11 @@ async def run_full_pipeline(req: AnalyzeRequest):
                 except asyncio.TimeoutError:
                     yield ": heartbeat\n\n"
             sim_result = sim_task.result()
+
+            # Translate any Chinese fields before persisting
+            yield sse({"event": "sim_progress", "phase": "Translating swarm report", "pct": 98})
+            sim_result = await translate_sim_result(sim_result)
+
             swarm_report_md = sim_result.get("markdown_content", "")
 
             sim_doc = Simulation(
