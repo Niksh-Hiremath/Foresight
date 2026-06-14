@@ -65,3 +65,11 @@ class Verdict(BaseModel):
     agents_report_md: str = ""
     gtm_report_md: str = ""
     created_at: datetime = Field(default_factory=_now)
+
+
+class KnowledgeDoc(BaseModel):
+    id: str = Field(default_factory=lambda: str(ObjectId()))
+    filename: str
+    extracted_text: str
+    char_count: int = 0
+    created_at: datetime = Field(default_factory=_now)

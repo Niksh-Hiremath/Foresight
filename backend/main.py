@@ -9,6 +9,7 @@ from routers.simulate import router as simulate_router
 from routers.synthesize import router as synthesize_router
 from routers.analyze import router as analyze_router
 from routers.reports import router as reports_router
+from routers.knowledge import router as knowledge_router
 from rag.store import load_from_db
 
 
@@ -35,3 +36,4 @@ app.include_router(simulate_router)
 app.include_router(synthesize_router)
 app.include_router(analyze_router)
 app.include_router(reports_router)
+app.include_router(knowledge_router)

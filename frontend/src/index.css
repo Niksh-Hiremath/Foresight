@@ -1,29 +1,284 @@
+@import "tailwindcss";
+
+@theme {
+  /* Color palette — matches inspiration */
+  --color-primary: #ffb4ac;
+  --color-primary-container: #ff544c;
+  --color-on-primary: #690006;
+  --color-on-primary-container: #ffffff;
+  --color-primary-fixed: #ffdad6;
+  --color-primary-fixed-dim: #ffb4ac;
+  --color-inverse-primary: #bb171c;
+
+  --color-secondary: #c8c6c5;
+  --color-secondary-container: #474746;
+  --color-on-secondary: #313030;
+  --color-on-secondary-container: #b7b5b4;
+  --color-secondary-fixed: #e5e2e1;
+  --color-secondary-fixed-dim: #c8c6c5;
+  --color-on-secondary-fixed: #1c1b1b;
+  --color-on-secondary-fixed-variant: #474746;
+
+  --color-tertiary: #c6c6c7;
+  --color-tertiary-container: #909191;
+  --color-on-tertiary: #2f3131;
+  --color-tertiary-fixed: #e2e2e2;
+  --color-tertiary-fixed-dim: #c6c6c7;
+  --color-on-tertiary-fixed: #1a1c1c;
+  --color-on-tertiary-fixed-variant: #454747;
+  --color-on-tertiary-container: #282a2a;
+
+  --color-error: #ffb4ab;
+  --color-error-container: #93000a;
+  --color-on-error: #690005;
+  --color-on-error-container: #ffdad6;
+
+  --color-surface: #131313;
+  --color-surface-dim: #131313;
+  --color-surface-bright: #3a3939;
+  --color-surface-tint: #ffb4ac;
+  --color-surface-variant: #353534;
+  --color-surface-container-lowest: #0e0e0e;
+  --color-surface-container-low: #1c1b1b;
+  --color-surface-container: #201f1f;
+  --color-surface-container-high: #2a2a2a;
+  --color-surface-container-highest: #353534;
+  --color-on-surface: #e5e2e1;
+  --color-on-surface-variant: #e4beb9;
+  --color-inverse-surface: #e5e2e1;
+  --color-inverse-on-surface: #313030;
+
+  --color-background: #131313;
+  --color-on-background: #e5e2e1;
+  --color-outline: #ab8985;
+  --color-outline-variant: #5b403d;
+
+  /* Typography families */
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-data-label: "JetBrains Mono", ui-monospace, monospace;
+  --font-data-value: "JetBrains Mono", ui-monospace, monospace;
+  --font-body-md: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-body-lg: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-headline-md: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-headline-lg: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-display-xl: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-display-lg: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-quote-display: "Syne", ui-sans-serif, system-ui, sans-serif;
+
+  /* Text sizes */
+  --text-data-label: 0.7rem;
+  --text-data-value: 0.65rem;
+  --text-body-md: 0.875rem;
+  --text-body-lg: 1rem;
+  --text-headline-sm: 1rem;
+  --text-headline-md: 1.25rem;
+  --text-headline-lg: 1.5rem;
+  --text-display-sm: 2rem;
+  --text-display-md: 2.5rem;
+  --text-display-lg: 3rem;
+  --text-display-xl: 4rem;
+}
+
 :root {
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+/* ── Custom Utilities ── */
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+@utility bg-grid-pattern {
+  background-image: linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; }
-#root { min-height: 100vh; }
+@utility bg-grid {
+  background-color: #131313;
+  background-image: linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ── Tactical grid overlay ── */
+.tactical-grid {
+  background-image: linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: gridPulse 4s infinite alternate ease-in-out;
+}
+
+@keyframes gridPulse {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* ── Scanline effect ── */
+.scanline-effect {
+  position: relative;
+  overflow: hidden;
+}
+.scanline-effect::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 20%;
+  background: linear-gradient(to bottom, transparent, rgba(229, 57, 53, 0.15), transparent);
+  animation: scanline 3s linear infinite;
+  pointer-events: none;
+}
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+/* ── Ticker ── */
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-wrap { overflow: hidden; white-space: nowrap; }
+.ticker-content { display: inline-block; animation: scroll 30s linear infinite; }
+
+/* ── Tactical dashed border ── */
+.tactical-border {
+  border: 1px dashed #5b403d;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.5) 10px,
+    rgba(32, 31, 31, 0.5) 10px, rgba(32, 31, 31, 0.5) 20px
+  );
+}
+
+/* ── Glitch text ── */
+.glitch-text { position: relative; }
+.glitch-text::before, .glitch-text::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #131313;
+  opacity: 0;
+}
+.glitch-text.is-glitching::before {
+  left: 2px; text-shadow: -1px 0 red;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim 5s infinite linear alternate-reverse;
+  opacity: 0.8; z-index: -1;
+}
+.glitch-text.is-glitching::after {
+  left: -2px; text-shadow: -1px 0 blue;
+  clip: rect(44px, 450px, 56px, 0);
+  animation: glitch-anim2 5s infinite linear alternate-reverse;
+  opacity: 0.8; z-index: -2;
+}
+@keyframes glitch-anim {
+  0% { clip: rect(10px, 9999px, 83px, 0); }
+  25% { clip: rect(51px, 9999px, 20px, 0); }
+  50% { clip: rect(2px, 9999px, 89px, 0); }
+  75% { clip: rect(49px, 9999px, 35px, 0); }
+  100% { clip: rect(95px, 9999px, 18px, 0); }
+}
+@keyframes glitch-anim2 {
+  0% { clip: rect(29px, 9999px, 55px, 0); }
+  25% { clip: rect(3px, 9999px, 67px, 0); }
+  50% { clip: rect(35px, 9999px, 48px, 0); }
+  75% { clip: rect(94px, 9999px, 60px, 0); }
+  100% { clip: rect(15px, 9999px, 58px, 0); }
+}
+
+/* ── Alert stripes ── */
+.alert-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255,84,76,0.08), rgba(255,84,76,0.08) 20px,
+    transparent 20px, transparent 40px
+  );
+  background-size: 56.56px 56.56px;
+  animation: stripe-pan 2s linear infinite;
+}
+@keyframes stripe-pan {
+  0% { background-position: 0 0; }
+  100% { background-position: 56.56px 0; }
+}
+
+/* ── Thinking dots ── */
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
+}
+.thinking-dots { display: inline-flex; align-items: center; gap: 3px; }
+.thinking-dots span {
+  display: inline-block;
+  width: 4px; height: 4px;
+  background: #ff544c;
+  border-radius: 50%;
+  animation: blink 1.4s infinite both;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── Data row hover ── */
+.data-row { transition: background-color 0.2s, border-left-color 0.2s; }
+.data-row:hover {
+  background-color: rgba(255, 84, 76, 0.03);
+  border-left-color: rgba(255, 84, 76, 0.4) !important;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0e0e0e; }
+::-webkit-scrollbar-thumb { background: #5b403d; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #ff544c; }
+
+/* ── Material Symbols ── */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+  font-size: inherit;
+  line-height: 1;
+  vertical-align: middle;
+  user-select: none;
+}
+
+/* ── Full-page scanlines overlay ── */
+.scanlines {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+}
+
+/* ── Scroll fade-in animation ── */
+.fade-in-up {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.fade-in-up.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── SVG path draw animation ── */
+.path-draw {
+  stroke-dasharray: 400;
+  stroke-dashoffset: 400;
+  animation: drawPath 3s ease-out forwards infinite;
+}
+@keyframes drawPath {
+  0% { stroke-dashoffset: 400; }
+  100% { stroke-dashoffset: 0; }
+}

@@ -1,5 +1,5 @@
 from db.client import get_db
-from models.schemas import Decision, IntakeContext, AgentFinding, Simulation, Verdict
+from models.schemas import Decision, IntakeContext, AgentFinding, Simulation, Verdict, KnowledgeDoc
 
 
 async def create_decision(doc: Decision) -> Decision:
@@ -57,3 +57,23 @@ async def create_verdict(doc: Verdict) -> Verdict:
 async def get_verdict(decision_id: str) -> Verdict | None:
     raw = await get_db()["verdicts"].find_one({"decision_id": decision_id})
     return Verdict(**raw) if raw else None
+
+
+async def create_knowledge_doc(doc: KnowledgeDoc) -> KnowledgeDoc:
+    await get_db()["knowledge_docs"].insert_one(doc.model_dump())
+    return doc
+
+
+async def list_knowledge_docs() -> list[KnowledgeDoc]:
+    cursor = get_db()["knowledge_docs"].find().sort("created_at", -1)
+    return [KnowledgeDoc(**raw) async for raw in cursor]
+
+
+async def get_knowledge_doc(doc_id: str) -> KnowledgeDoc | None:
+    raw = await get_db()["knowledge_docs"].find_one({"id": doc_id})
+    return KnowledgeDoc(**raw) if raw else None
+
+
+async def delete_knowledge_doc(doc_id: str) -> bool:
+    result = await get_db()["knowledge_docs"].delete_one({"id": doc_id})
+    return result.deleted_count > 0
