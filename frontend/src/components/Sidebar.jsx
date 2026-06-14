@@ -169,8 +169,8 @@ export default function Sidebar() {
               <span className="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors text-base">account_circle</span>
             </div>
             <div className="flex flex-col flex-grow overflow-hidden">
-              <span className="text-[11px] text-on-surface tracking-widest uppercase truncate" style={{ fontFamily: 'JetBrains Mono, monospace' }}>GUEST OPERATIVE</span>
-              <span className="text-[10px] text-on-surface-variant/60 tracking-widest truncate" style={{ fontFamily: 'JetBrains Mono, monospace' }}>ID: 884-A9B</span>
+              <span className="text-[11px] text-on-surface tracking-widest uppercase truncate" style={{ fontFamily: 'JetBrains Mono, monospace' }}>HIGH ROLLERS</span>
+              <span className="text-[10px] text-on-surface-variant/60 tracking-widest truncate" style={{ fontFamily: 'JetBrains Mono, monospace' }}>ID: 44</span>
             </div>
             <span className="material-symbols-outlined text-on-surface-variant text-sm group-hover:text-primary transition-colors">more_vert</span>
           </div>

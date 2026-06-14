@@ -534,6 +534,9 @@ export default function AgentsPage() {
 
             {/* Left: Results sections */}
             <div className="flex-1 min-w-0 p-8 flex flex-col gap-8">
+              {/* Verdict Banner — pinned to top once pipeline completes */}
+              {scoreData && step === 'done' && !running && <VerdictBanner data={scoreData} />}
+
               {/* Swarm progress during simulation */}
               {running && pipelineStage === 'simulating' && simProgress.phase && (
                 <div className="bg-surface-container border border-outline-variant p-4 rounded">
@@ -618,9 +621,6 @@ export default function AgentsPage() {
                 </DashSection>
               )}
 
-              {/* Verdict Banner — shown only after full pipeline completes */}
-              {scoreData && step === 'done' && !running && <VerdictBanner data={scoreData} />}
-
               {/* 07 Five-Agent Report */}
               {reports.agentsReport && (
                 <DashSectionDownload num="07" title="Five-Agent Report" onDownload={() => downloadMd(reports.agentsReport, `agents-report-${slug}.md`)}>
@@ -645,18 +645,16 @@ export default function AgentsPage() {
 
             {/* Right: Agent status panel */}
             <aside className="w-72 shrink-0 border-l border-outline-variant bg-surface-container-lowest/30">
-              <div className="sticky top-0 overflow-y-auto" style={{ maxHeight: '100vh', paddingTop: '112px' }}>
-                <div className="px-4 pb-6 flex flex-col gap-3">
-                  <AgentSidePanel
-                    agents={agents}
-                    pipelineStage={pipelineStage}
-                    running={running}
-                    simProgress={simProgress}
-                    step={step}
-                    eventLog={eventLog}
-                    decisionId={decisionId}
-                  />
-                </div>
+              <div className="px-4 pt-6 pb-6 flex flex-col gap-3">
+                <AgentSidePanel
+                  agents={agents}
+                  pipelineStage={pipelineStage}
+                  running={running}
+                  simProgress={simProgress}
+                  step={step}
+                  eventLog={eventLog}
+                  decisionId={decisionId}
+                />
               </div>
             </aside>
 
@@ -1011,13 +1009,13 @@ function IntakeSummary({ data }) {
       {Object.keys(answers).length > 0 && (
         <div className="p-4 bg-surface-container border border-outline-variant/50 rounded">
           <p className="text-[10px] text-on-surface-variant uppercase tracking-widest mb-3" style={{ fontFamily: 'JetBrains Mono, monospace' }}>Follow-up Clarifications</p>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {Object.entries(answers).map(([k, v]) => {
               const q = questions.find(q => q.id === k)
               return (
-                <div key={k} className="flex gap-3 text-sm">
-                  <span className="text-on-surface-variant shrink-0">{q?.question || k}:</span>
-                  <span className="text-on-surface">{String(v)}</span>
+                <div key={k} className="flex flex-col gap-0.5 border-l-2 border-outline-variant/40 pl-3">
+                  <span className="text-[11px] text-on-surface-variant break-words leading-relaxed" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{q?.question || k}</span>
+                  <span className="text-sm text-on-surface font-medium">{String(v)}</span>
                 </div>
               )
             })}
@@ -1209,7 +1207,7 @@ function AgentCard({ name, state }) {
         <p className="text-[11px] text-on-surface-variant/60">No findings.</p>
       )}
       {status === 'complete' && findings.length > 0 && (
-        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+        <div className="flex flex-col gap-1">
           {findings.map(f => <FindingRow key={f.id} finding={f} />)}
         </div>
       )}
@@ -1235,7 +1233,7 @@ function FindingRow({ finding }) {
         <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase shrink-0" style={{ fontFamily: 'JetBrains Mono, monospace', color: sc.color, background: sc.bg, border: `1px solid ${sc.border}` }}>
           {sc.label}
         </span>
-        <span className="text-xs text-on-surface flex-1 truncate">{finding.vulnerability}</span>
+        <span className="text-xs text-on-surface flex-1 break-words">{finding.vulnerability}</span>
         <span className="text-on-surface-variant text-xs material-symbols-outlined">{expanded ? 'expand_less' : 'expand_more'}</span>
       </div>
       {expanded && (
@@ -1505,8 +1503,7 @@ function AgentSidePanel({ agents, pipelineStage, running, simProgress, step, eve
           </div>
           <div
             ref={feedRef}
-            className="bg-surface-container-lowest border border-outline-variant/30 rounded px-2 py-1 overflow-y-auto"
-            style={{ maxHeight: '220px' }}
+            className="bg-surface-container-lowest border border-outline-variant/30 rounded px-2 py-1"
           >
             {eventLog.map(entry => (
               <EventFeedItem key={entry.id} entry={entry} />
