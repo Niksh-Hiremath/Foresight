@@ -12,7 +12,7 @@ Foresight stress-tests strategic decisions from the inside. Upload a business pl
 |---|---|
 | **Upload + Intake** | Parse PDF/DOCX → LLM extracts core decision, beliefs, gaps → 3–5 adaptive follow-up Q&A |
 | **5 Adversarial Agents** | CFO, Market, Competitor, Legal, Execution run in parallel — each attacks from a distinct angle, grounded in your document + live web data |
-| **Swarm Simulation** | MiroFish feeds thousands of personality-driven agents a seed scenario → bull/base/bear outcome bands |
+| **Swarm Simulation** | MiroFish feeds thousands of personality-driven agents a seed scenario → bull/base/bear outcome bands; Chinese output auto-translated to English |
 | **Verdict + GTM** | Risk Score (0–100), DO NOT PROCEED / CAUTION / PROCEED, 3 questions the team must answer, India-specific go-to-market strategy |
 | **Remediation Roadmap** | Each top finding maps to a concrete remediation action per agent |
 
@@ -25,10 +25,11 @@ Foresight stress-tests strategic decisions from the inside. Upload a business pl
 - **Deterministic scoring** — `CRITICAL×30 / HIGH×15 / MEDIUM×5` + cross-agent convergence bonuses, capped at 100. No vibes.
 - **Live web grounding** — Market + Competitor agents call Firecrawl for current evidence; results are cited
 - **Two-layer RAG** — `decision` layer (your doc) + `internal` layer (company knowledge base); keyword fallback if Atlas Vector Search is unavailable
-- **MiroFish swarm bridge** — 7-step async pipeline; pre-run and cached for demo reliability
+- **MiroFish swarm bridge** — 7-step async pipeline; reuses existing built graph to avoid Zep Cloud episode quota exhaustion (Steps 1–2 skipped on repeat runs); auto-translates Chinese output before saving to DB
 - **Knowledge Base** — upload internal docs (strategy memos, Salesforce exports); extracted text stored in MongoDB and fed to the `internal` RAG layer
-- **Live agent panel** — right-side sticky panel with per-agent status cards, severity badges, live event timeline, D3 findings graph, and RAG knowledge graph — inspired by MiroFish's simulation UI
-- **Full dashboard** — intake summary → agent findings → risk gauge → scenarios → GTM → remediation roadmap → verdict
+- **Live agent panel** — right-side panel with per-agent status cards, severity badges, live event timeline, and D3 findings graph
+- **Persistent activity log** — event feed saved to localStorage per decision; visible when revisiting any past analysis from History
+- **Full dashboard** — intake summary → agent findings → risk gauge → scenarios → GTM → remediation roadmap → verdict banner pinned to top
 - **Deterministic fallbacks everywhere** — RAG → keyword search; MiroFish down → cached stub; JSON parse fail → score-computed report. The demo never breaks.
 
 ---
@@ -39,7 +40,7 @@ Foresight stress-tests strategic decisions from the inside. Upload a business pl
 ┌─────────────────────────────────────────────────────────────┐
 │  Frontend — React 19 + Vite (:5173)                         │
 │  Landing · Agents Dashboard · Knowledge Base · Plugins ·    │
-│  History · Live agent panel (D3 graphs + event feed)        │
+│  History · Live agent panel (D3 findings graph + event feed) │
 └──────────────────────┬──────────────────────────────────────┘
                        │ SSE + REST
 ┌──────────────────────▼──────────────────────────────────────┐
@@ -112,7 +113,7 @@ npm run setup:all
 npm run dev
 ```
 
-MiroFish runs at `:5001` (API) and `:3000` (UI). The Foresight backend bridges to it automatically.
+MiroFish runs at `:5001` (API) and `:3000` (UI). The Foresight backend bridges to it automatically. On repeat runs the bridge reuses the existing knowledge graph — no new Zep episodes are consumed.
 
 ---
 
@@ -121,8 +122,8 @@ MiroFish runs at `:5001` (API) and `:3000` (UI). The Foresight backend bridges t
 ```env
 # LLM — any OpenAI-SDK-compatible provider
 LLM_API_KEY=your-key
-LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/   # default: Gemini
-LLM_MODEL=meta/llama-3.3-70b-instruct    # or gemini-2-flash, gpt-4o, etc.
+LLM_BASE_URL=https://integrate.api.nvidia.com/v1   # or Gemini, OpenRouter, Ollama, etc.
+LLM_MODEL_NAME=meta/llama-3.3-70b-instruct         # or gemini-2-flash, gpt-4o, etc.
 
 # Web grounding
 FIRECRAWL_API_KEY=your-firecrawl-key
@@ -137,7 +138,7 @@ LLM_MODEL_NAME=same-as-above
 ZEP_API_KEY=your-zep-cloud-key
 ```
 
-Provider is fully env-swappable. Switch `LLM_BASE_URL` + `LLM_MODEL` to use OpenAI, OpenRouter, a local Ollama instance, etc. — zero code changes.
+Provider is fully env-swappable. Switch `LLM_BASE_URL` + `LLM_MODEL_NAME` to use OpenAI, OpenRouter, a local Ollama instance, etc. — zero code changes.
 
 ---
 
@@ -150,7 +151,7 @@ Provider is fully env-swappable. Switch `LLM_BASE_URL` + `LLM_MODEL` to use Open
 | POST | `/intake/analyze` | LLM extracts DecisionContext + generates follow-up Q&A |
 | POST | `/intake/answers` | Save user's answers |
 | GET | `/intake/context/{id}` | Retrieve stored DecisionContext |
-| POST | `/analyze` | **One-click full pipeline over SSE** (agents → score → sim → GTM → synthesis) |
+| POST | `/analyze` | **One-click full pipeline over SSE** (agents → score → sim → translate → GTM → synthesis) |
 | GET | `/agents/findings/{id}` | All agent findings for a decision |
 | GET | `/agents/score/{id}` | Computed risk score |
 | POST | `/simulate/run` | Run MiroFish bridge (or return cached) |
@@ -171,7 +172,9 @@ Provider is fully env-swappable. Switch `LLM_BASE_URL` + `LLM_MODEL` to use Open
 { "event": "agent_complete", "agent": "cfo", "findings": [...], "progress": 20 }
 { "event": "scoring",        "risk_score": 72, "verdict": "PROCEED_WITH_CAUTION", "progress": 90 }
 { "event": "simulating",     "progress": 93 }
-{ "event": "sim_progress",   "phase": "Opinion formation", "pct": 45 }
+{ "event": "sim_progress",   "phase": "Reusing existing knowledge graph", "pct": 30 }
+{ "event": "sim_progress",   "phase": "Agent swarm — round 2/5", "pct": 71 }
+{ "event": "sim_progress",   "phase": "Translating swarm report", "pct": 98 }
 { "event": "gtm_start",      "progress": 94 }
 { "event": "synthesizing",   "progress": 97 }
 { "event": "complete",       "progress": 100, "score": {...}, "report": {...} }
@@ -186,7 +189,7 @@ Provider is fully env-swappable. Switch `LLM_BASE_URL` + `LLM_MODEL` to use Open
 | Frontend framework | React 19 + Vite 8 |
 | Styling | Tailwind CSS 4 (CSS-first `@theme` config) |
 | Routing | React Router DOM 7 |
-| Visualization | D3.js 7 (force-directed graphs) |
+| Visualization | D3.js 7 (force-directed findings graph) |
 | Backend framework | FastAPI 0.115 (async, SSE streaming) |
 | LLM access | OpenAI Python SDK 1.56 (env-configured provider) |
 | Database | MongoDB Atlas M0 + Motor 3.7 (async driver) |
@@ -204,7 +207,7 @@ Provider is fully env-swappable. Switch `LLM_BASE_URL` + `LLM_MODEL` to use Open
 | `decisions` | Raw uploaded documents (text extracted, not the file) |
 | `intake_context` | Structured DecisionContext + user Q&A answers |
 | `agent_findings` | Per-agent findings (vulnerability, severity, attack, question) |
-| `simulations` | MiroFish results (bull/base/bear, opinion dynamics, swarm report) |
+| `simulations` | MiroFish results (bull/base/bear, opinion dynamics, swarm report — always English) |
 | `verdicts` | Final synthesis (risk score, verdict, GTM, executive summary) |
 | `knowledge_docs` | Internal knowledge base documents (extracted text only) |
 | `rag_chunks` | RAG chunk store (text, domain, source, decision_id) |
@@ -217,14 +220,15 @@ Provider is fully env-swappable. Switch `LLM_BASE_URL` + `LLM_MODEL` to use Open
 HackPrixS3/
 ├── backend/
 │   ├── main.py                  # FastAPI app + middleware
-│   ├── config.py                # pydantic-settings env loader
+│   ├── config.py                # pydantic-settings env loader (LLM_MODEL_NAME alias)
 │   ├── models/schemas.py        # Pydantic models for all collections
 │   ├── db/                      # MongoDB client + repository functions
 │   ├── rag/                     # Two-layer RAG (chunker, store, retrieval)
 │   ├── routers/                 # intake, agents, analyze, simulate,
 │   │                            # synthesize, reports, knowledge, rag_graph
 │   └── services/                # LLM client, document parser, agents,
-│                                # seed composer, synthesis, MiroFish bridge
+│                                # seed composer, synthesis, MiroFish bridge,
+│                                # translation (auto-runs post-simulation)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx              # Routes
@@ -234,19 +238,11 @@ HackPrixS3/
 │   │   └── index.css            # Tailwind @theme + custom CSS animations
 │   └── vite.config.js
 ├── mirofish/                    # MiroFish subproject (OASIS swarm engine)
-├── spikes/                      # Validation scripts (LLM, Firecrawl, Mongo)
+├── scripts/                     # Utility scripts (e.g. translate_simulation.py backfill)
+├── spikes/                      # Validation scripts (LLM, Firecrawl, Mongo, MiroFish e2e)
 ├── ARCHITECTURE.md
 ├── ROADMAP.md
 ├── PLAN.md
 ├── AGENTS_USED.md
 └── MIROFISH_INTEGRATION.md
 ```
-
----
-
-## Team
-
-Built at HackPrix S3 (June 13–14, 2026) in ~20 hours by a 2-person team.
-
-- **Partner technologies used:** Firecrawl (web grounding), MongoDB Atlas (persistence), MiroFish / OASIS (swarm simulation)
-- **LLM:** env-configured via OpenAI SDK — default `meta/llama-3.3-70b-instruct`, swappable to Gemini, GPT-4o, or any OpenAI-compatible endpoint
